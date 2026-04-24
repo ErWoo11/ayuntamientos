@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#2563eb">
+  <title>Alertas Municipales</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #1a1a1a;
+      --text-muted: #6c757d;
+      --border: #e9ecef;
+      --primary: #2563eb;
+      --hero-bg: #2c2c2c;
+      --badge-event: #ecfdf5;
+      --badge-event-text: #059669;
+      --badge-parking: #fff1f2;
+      --badge-parking-text: #be123c;
+      --badge-utility: #eff6ff;
+      --badge-utility-text: #1d4ed8;
+      --badge-roadwork: #fef3c7;
+      --badge-roadwork-text: #b45309;
+      --badge-other: #f3f4f6;
+      --badge-other-text: #374151;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); line-height: 1.5; }
+    
+    /* Top Nav */
+    .top-nav { background: #fff; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+    .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; font-size: 1.25rem; }
+    .logo i { background: var(--text); color: #fff; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+    .nav-subtitle { color: var(--text-muted); font-size: 0.9rem; }
+    
+    /* Hero */
+    .hero { background: var(--hero-bg); color: #fff; padding: 2rem; }
+    .hero-content { max-width: 1200px; margin: 0 auto; }
+    .hero h1 { font-size: 2.25rem; margin-bottom: 0.5rem; }
+    .hero p { color: #d1d5db; font-size: 1.1rem; max-width: 600px; }
+    .stats { display: flex; gap: 1rem; margin-top: 1.5rem; flex-wrap: wrap; }
+    .stat-badge { background: rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .stat-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .stat-dot.green { background: #34d399; }
+    .stat-dot.yellow { background: #fbbf24; }
+    .stat-dot.blue { background: #60a5fa; }
+    
+    /* Main Container */
+    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+    
+    /* Filters Bar */
+    .filters-bar { background: var(--card-bg); padding: 1.5rem; border-radius: 16px; border: 1px solid var(--border); margin-bottom: 2rem; }
+    .search-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .search-input { flex: 1; padding: 0.75rem 1rem 0.75rem 2.5rem; border: 1px solid var(--border); border-radius: 10px; font-size: 0.95rem; background: #f9fafb; }
+    .search-wrapper { position: relative; flex: 1; }
+    .search-wrapper i { position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+    .sort-btn { padding: 0.75rem 1.25rem; border: 1px solid var(--border); border-radius: 10px; background: #fff; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .filter-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .filter-select { padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 10px; font-size: 0.9rem; background: #fff; min-width: 200px; cursor: pointer; }
+    .results-count { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.75rem; }
+    
+    /* Cards Grid */
+    .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.25rem; }
+    .incident-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 1.25rem; transition: box-shadow 0.2s, transform 0.2s; }
+    .incident-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-2px); }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }
+    .category-badge { padding: 0.35rem 0.75rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
+    .category-badge.event { background: var(--badge-event); color: var(--badge-event-text); }
+    .category-badge.parking_ban { background: var(--badge-parking); color: var(--badge-parking-text); }
+    .category-badge.utility_cut { background: var(--badge-utility); color: var(--badge-utility-text); }
+    .category-badge.roadwork { background: var(--badge-roadwork); color: var(--badge-roadwork-text); }
+    .category-badge.street_closure { background: #fef2f2; color: #b91c1c; }
+    .category-badge.other { background: var(--badge-other); color: var(--badge-other-text); }
+    .status-badge { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status-dot.planned { background: #fbbf24; }
+    .status-dot.ongoing { background: #34d399; }
+    .status-dot.completed { background: #9ca3af; }
+    .status-dot.cancelled { background: #f87171; }
+    .card-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem; line-height: 1.4; }
+    .card-muni { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem; }
+    .card-desc { font-size: 0.9rem; color: #4b5563; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    
+    /* Login Button */
+    .login-btn { padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); transition: all 0.2s; }
+    .login-btn:hover { border-color: var(--primary); color: var(--primary); }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .top-nav { padding: 1rem; }
+      .hero { padding: 1.5rem 1rem; }
+      .hero h1 { font-size: 1.75rem; }
+      .container { padding: 1rem; }
+      .search-row { flex-direction: column; }
+      .filter-row { flex-direction: column; }
+      .filter-select { width: 100%; }
+      .cards-grid { grid-template-columns: 1fr; }
+    }
+    
+    /* Loading & Empty States */
+    .loading, .empty-state { text-align: center; padding: 3rem; color: var(--text-muted); }
+    .empty-state i { font-size: 3rem; margin-bottom: 1rem; display: block; }
+    
+    /* Toast */
+    .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 0.75rem 1.5rem; border-radius: 10px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 1000; font-size: 0.9rem; }
+    .toast.show { opacity: 1; }
+    
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- Top Nav -->
+  <nav class="top-nav">
+    <div class="logo">
+      <i class="fas fa-bell"></i>
+      <span>Alertas Municipales</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <span class="nav-subtitle">Información municipal centralizada</span>
+      <button id="loginBtn" class="login-btn">🔐 Acceso Ayuntamientos</button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1>Alertas e incidencias municipales</h1>
+      <p>Consulta cortes de calles, prohibiciones de aparcamiento, cortes de suministros, obras y eventos en tu municipio.</p>
+      <div class="stats">
+        <div class="stat-badge"><span class="stat-dot green"></span><span id="statActive">0</span> alertas activas</div>
+        <div class="stat-badge"><span class="stat-dot yellow"></span><span id="statPlanned">0</span> próximas</div>
+        <div class="stat-badge"><i class="fas fa-landmark" style="font-size: 0.8rem;"></i><span id="statMunis">0</span> ayuntamientos</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main -->
+  <main class="container">
+    <section class="filters-bar">
+      <div class="search-row">
+        <div class="search-wrapper">
+          <i class="fas fa-search"></i>
+          <input type="text" id="searchInput" class="search-input" placeholder="Buscar alertas...">
+        </div>
+        <button class="sort-btn" id="sortBtn"><i class="fas fa-arrow-down"></i> Más reciente</button>
+      </div>
+      <div class="filter-row">
+        <select id="muniSelect" class="filter-select"><option value="">Todos los ayuntamientos</option></select>
+        <select id="catSelect" class="filter-select">
+          <option value="">Todas las categorías</option>
+          <option value="street_closure">Cortes de calles</option>
+          <option value="parking_ban">Prohibición aparcamiento</option>
+          <option value="utility_cut">Cortes suministros</option>
+          <option value="roadwork">Obras</option>
+          <option value="event">Eventos</option>
+          <option value="other">Otros</option>
+        </select>
+        <select id="statusSelect" class="filter-select">
+          <option value="">Todos los estados</option>
+          <option value="planned">Planificado</option>
+          <option value="ongoing">En curso</option>
+          <option value="completed">Finalizado</option>
+          <option value="cancelled">Cancelado</option>
+        </select>
+      </div>
+      <p class="results-count" id="resultsCount">0 alertas encontradas</p>
+    </section>
+
+    <div id="incidentsList" class="cards-grid"></div>
+    <button id="loadMore" class="sort-btn hidden" style="margin: 2rem auto; display: flex;">Cargar más alertas</button>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
