@@ -39,8 +39,8 @@ export async function login(email, password) {
   }
 
   const role = userDoc.data().role;
-  if (role === "superadmin")       window.location.href = "/admin.html";
-  else if (role === "municipal")   window.location.href = "/municipal.html";
+  if (role === "superadmin")       window.location.href = "/ayuntamientos/admin.html";
+  else if (role === "municipal")   window.location.href = "/ayuntamientos/municipal.html";
   else {
     await signOut(auth);
     throw new Error("Rol no autorizado.");

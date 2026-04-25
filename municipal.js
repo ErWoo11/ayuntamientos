@@ -56,7 +56,7 @@ onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     await loadUserProfile();
   } else {
-    window.location.href = "/index.html";
+    window.location.href = "/ayuntamientos/index.html";
   }
 });
 
@@ -66,7 +66,7 @@ async function loadUserProfile() {
     const snap = await getDoc(doc(db, "users", currentUser.uid));
     if (!snap.exists() || snap.data().role !== "municipal") {
       await signOut(auth);
-      window.location.href = "/index.html";
+      window.location.href = "/ayuntamientos/index.html";
       return;
     }
 
@@ -75,7 +75,7 @@ async function loadUserProfile() {
     // Check municipality is active
     if (userData.status === "inactive") {
       await signOut(auth);
-      window.location.href = "/index.html";
+      window.location.href = "/ayuntamientos/index.html";
       return;
     }
 
@@ -345,5 +345,5 @@ document.getElementById("incidentsTableBody")?.addEventListener("click", async (
 // ── Logout ────────────────────────────────────────────────────────────────
 document.getElementById("logoutBtn")?.addEventListener("click", async () => {
   await signOut(auth);
-  window.location.href = "/index.html";
+  window.location.href = "/ayuntamientos/index.html";
 });

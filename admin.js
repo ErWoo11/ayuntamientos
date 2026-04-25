@@ -40,13 +40,13 @@ function showToast(msg, type = "info") {
 
 // ── Auth guard ─────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { window.location.href = "/index.html"; return; }
+  if (!user) { window.location.href = "/ayuntamientos/index.html"; return; }
 
   const snap = await getDoc(doc(db, "users", user.uid));
   if (!snap.exists() || snap.data().role !== "superadmin") {
     showToast("Acceso denegado. Rol insuficiente.", "error");
     await signOut(auth);
-    window.location.href = "/index.html";
+    window.location.href = "/ayuntamientos/index.html";
     return;
   }
 
@@ -59,7 +59,7 @@ onAuthStateChanged(auth, async (user) => {
 // ── Logout ─────────────────────────────────────────────────────────────────
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   await signOut(auth);
-  window.location.href = "/index.html";
+  window.location.href = "/ayuntamientos/index.html";
 });
 
 // ── Tabs ───────────────────────────────────────────────────────────────────

@@ -126,7 +126,7 @@ function renderCard(id, data) {
   // Click → detail page
   card.style.cursor = "pointer";
   card.addEventListener("click", () => {
-    window.location.href = `/incident-detail.html?id=${id}`;
+    window.location.href = `/ayuntamientos/incident-detail.html?id=${id}`;
   });
 
   return card;
@@ -320,7 +320,7 @@ if (installBtn) {
 
 // ── Auth redirect if already logged in ────────────────────────────────────
 onAuthStateChanged(auth, user => {
-  if (user) window.location.href = "/municipal.html";
+  if (user) window.location.href = "/ayuntamientos/municipal.html";
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────

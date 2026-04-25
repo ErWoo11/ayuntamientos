@@ -182,7 +182,7 @@ async function loadDetail() {
 
     // Update breadcrumb
     document.getElementById("breadcrumbMuni").innerHTML =
-      `<a href="index.html">${data.municipalityName || "Ayuntamiento"}</a>`;
+      `<a href="/ayuntamientos/index.html">${data.municipalityName || "Ayuntamiento"}</a>`;
     document.getElementById("breadcrumbTitle").textContent = data.title;
     document.title = `${data.title} — Alertas Municipales`;
 
@@ -198,7 +198,7 @@ function showError(message) {
       <i class="fas fa-exclamation-circle"></i>
       <p>${message}</p>
       <br>
-      <a href="index.html">← Volver al listado</a>
+      <a href="/ayuntamientos/index.html">← Volver al listado</a>
     </div>`;
 }
 
