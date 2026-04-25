@@ -6,24 +6,33 @@ import {
   getFirestore, doc, getDoc, collection, query, where, orderBy,
   addDoc, updateDoc, serverTimestamp, getDocs, limit, setDoc
 } from "firebase/firestore";
-import { firebaseConfig } from "./firebase-config.js";
 
-// ── Firebase init ──────────────────────────────────────────────────────────
-const app         = initializeApp(firebaseConfig);
-const auth        = getAuth(app);
-const db          = getFirestore(app);
+// ── Firebase config ────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyBzidosSZRxKmjMIrg0zAjYRt_rbohcHLU",
+  authDomain: "saas-45027.firebaseapp.com",
+  projectId: "saas-45027",
+  storageBucket: "saas-45027.firebasestorage.app",
+  messagingSenderId: "117144809845",
+  appId: "1:117144809845:web:83153cf3aa6bc97851233c"
+};
 
-// Second app instance so creating a user doesn't log out the superadmin
+const app          = initializeApp(firebaseConfig);
+const auth         = getAuth(app);
+const db           = getFirestore(app);
+
+// Second app instance so creating a user doesn't kick out the superadmin
 const creationApp  = initializeApp(firebaseConfig, "user-creation-app");
 const creationAuth = getAuth(creationApp);
 
 // ── State ──────────────────────────────────────────────────────────────────
-let municipalities = [];   // populated by loadMunicipalities(); used by loadUsers()
+let municipalities = [];
 
 // ── Toast ──────────────────────────────────────────────────────────────────
 function showToast(msg, type = "info") {
   const t = document.getElementById("toast");
-  t.innerHTML = `<i class="fas ${type === "success" ? "fa-check-circle" : type === "error" ? "fa-times-circle" : "fa-info-circle"}"></i> ${msg}`;
+  const icons = { success: "fa-check-circle", error: "fa-times-circle", info: "fa-info-circle" };
+  t.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i> ${msg}`;
   t.className = `toast show ${type}`;
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.remove("show"), 3500);
@@ -41,7 +50,7 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
-  // Load in order: municipalities first so loadUsers() can map names
+  // Load municipalities first (needed for user table municipality names)
   await loadMunicipalities();
   loadMetrics();
   loadUsers();
@@ -87,12 +96,13 @@ async function loadMunicipalities() {
 
     const tbody  = document.getElementById("muniTableBody");
     const select = document.getElementById("userMuniSelect");
-
     tbody.innerHTML  = "";
-    select.innerHTML = '<option value="">Seleccionar municipio...</option>';
+    select.innerHTML = '<option value="">Seleccionar municipio…</option>';
 
     if (snap.empty) {
-      tbody.innerHTML = `<tr><td colspan="5" class="table-empty"><i class="fas fa-city"></i>No hay municipios registrados</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="table-empty">
+        <i class="fas fa-city"></i>No hay municipios registrados
+      </td></tr>`;
       return;
     }
 
@@ -100,9 +110,9 @@ async function loadMunicipalities() {
       const data = docSnap.data();
       municipalities.push({ id: docSnap.id, ...data });
 
-      // Populate dropdown for user creation
+      // Populate select
       const opt = document.createElement("option");
-      opt.value       = docSnap.id;
+      opt.value = docSnap.id;
       opt.textContent = data.name;
       select.appendChild(opt);
 
@@ -115,7 +125,8 @@ async function loadMunicipalities() {
         <td>${data.contact_email || '<span style="color:var(--text-muted)">—</span>'}</td>
         <td>
           <span class="badge ${isActive ? "badge-active" : "badge-inactive"}">
-            <span class="badge-dot"></span>${isActive ? "Activo" : "Inactivo"}
+            <span class="badge-dot"></span>
+            ${isActive ? "Activo" : "Inactivo"}
           </span>
         </td>
         <td style="text-align:right;">
@@ -138,8 +149,8 @@ async function loadMunicipalities() {
 document.getElementById("muniForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = e.target.querySelector("button[type='submit']");
-  btn.disabled = true;
-  btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Creando...`;
+  btn.disabled  = true;
+  btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Creando…";
 
   try {
     await addDoc(collection(db, "municipalities"), {
@@ -157,12 +168,12 @@ document.getElementById("muniForm").addEventListener("submit", async (e) => {
     console.error("Error creando municipio:", err);
     showToast("Error al crear municipio", "error");
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = `<i class="fas fa-plus"></i> Crear municipio`;
+    btn.disabled  = false;
+    btn.innerHTML = "<i class='fas fa-plus'></i> Crear municipio";
   }
 });
 
-// Toggle municipality status
+// Toggle municipality (event delegation)
 document.getElementById("muniTableBody").addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-action='toggle-muni']");
   if (!btn) return;
@@ -199,7 +210,9 @@ async function loadUsers() {
     municipalities.forEach(m => { muniMap[m.id] = m.name; });
 
     if (snap.empty) {
-      tbody.innerHTML = `<tr><td colspan="4" class="table-empty"><i class="fas fa-users"></i>No hay usuarios municipales</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4" class="table-empty">
+        <i class="fas fa-users"></i>No hay usuarios municipales
+      </td></tr>`;
       return;
     }
 
@@ -217,7 +230,8 @@ async function loadUsers() {
         <td>${muniMap[data.municipality_id] || '<span style="color:var(--text-muted)">Desconocido</span>'}</td>
         <td>
           <span class="badge ${isActive ? "badge-active" : "badge-inactive"}">
-            <span class="badge-dot"></span>${isActive ? "Activo" : "Inactivo"}
+            <span class="badge-dot"></span>
+            ${isActive ? "Activo" : "Inactivo"}
           </span>
         </td>
         <td style="text-align:right;">
@@ -239,7 +253,6 @@ async function loadUsers() {
 // Create user
 document.getElementById("userForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-
   const email  = document.getElementById("userEmail").value.trim();
   const pass   = document.getElementById("userPass").value;
   const muniId = document.getElementById("userMuniSelect").value;
@@ -247,15 +260,13 @@ document.getElementById("userForm").addEventListener("submit", async (e) => {
   if (!muniId) { showToast("Selecciona un municipio", "error"); return; }
 
   const btn = e.target.querySelector("button[type='submit']");
-  btn.disabled = true;
-  btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Creando...`;
+  btn.disabled  = true;
+  btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Creando…";
 
   try {
-    // Create Firebase Auth user without logging out the current admin
     const userCred = await createUserWithEmailAndPassword(creationAuth, email, pass);
     await signOut(creationAuth);
 
-    // Write Firestore profile
     await setDoc(doc(db, "users", userCred.user.uid), {
       email,
       role:            "municipal",
@@ -272,23 +283,22 @@ document.getElementById("userForm").addEventListener("submit", async (e) => {
     console.error("Error creando usuario:", err);
     const msgs = {
       "auth/email-already-in-use": "Este email ya está registrado.",
-      "auth/weak-password":        "La contraseña es demasiado débil.",
-      "auth/invalid-email":        "El email no es válido."
+      "auth/weak-password":        "La contraseña es demasiado débil (mínimo 6 caracteres).",
+      "auth/invalid-email":        "El email no tiene un formato válido."
     };
     showToast(msgs[err.code] || `Error: ${err.message}`, "error");
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = `<i class="fas fa-user-plus"></i> Crear usuario`;
+    btn.disabled  = false;
+    btn.innerHTML = "<i class='fas fa-user-plus'></i> Crear usuario";
   }
 });
 
-// Toggle user status
+// Toggle user (event delegation — uses CSS class, not text content)
 document.getElementById("userTableBody").addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-action='toggle-user']");
   if (!btn) return;
 
-  const id  = btn.dataset.id;
-  // Determine current status from the badge in the same row
+  const id       = btn.dataset.id;
   const row      = btn.closest("tr");
   const isActive = row.querySelector(".badge-active") !== null;
 
