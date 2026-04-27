@@ -4,19 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#2563eb">
-
-  <script type="importmap">
-  {
-    "imports": {
-      "firebase/app": "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js",
-      "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js",
-      "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"
-    }
-  }
-  </script>
-
   <title>Detalle de alerta - Alertas Municipales</title>
+
+  <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+
   <style>
     :root {
       --bg: #fafafa;
@@ -26,96 +21,112 @@
       --text-light: #9ca3af;
       --border: #e5e7eb;
       --accent: #f59e0b;
-      --badge-parking: #fef2f2;
-      --badge-parking-text: #be123c;
-      --badge-event: #ecfdf5;
-      --badge-event-text: #059669;
-      --badge-utility: #eff6ff;
-      --badge-utility-text: #1d4ed8;
-      --badge-roadwork: #fffbeb;
-      --badge-roadwork-text: #b45309;
-      --badge-closure: #fef2f2;
-      --badge-closure-text: #dc2626;
-      --badge-other: #f3f4f6;
-      --badge-other-text: #374151;
+      --danger: #ef4444;
+      --badge-parking: #fef2f2;   --badge-parking-text: #be123c;
+      --badge-event: #ecfdf5;     --badge-event-text: #059669;
+      --badge-utility: #eff6ff;   --badge-utility-text: #1d4ed8;
+      --badge-roadwork: #fffbeb;  --badge-roadwork-text: #b45309;
+      --badge-closure: #fef2f2;   --badge-closure-text: #dc2626;
+      --badge-other: #f3f4f6;     --badge-other-text: #374151;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     body { background: var(--bg); color: var(--text); line-height: 1.6; }
 
-    /* Top Nav */
-    .top-nav { background: #fff; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
-    .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; font-size: 1.2rem; text-decoration: none; color: var(--text); }
+    /* ── Nav ── */
+    .top-nav { background: #fff; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1000; }
+    .logo { display: flex; align-items: center; gap: .75rem; font-weight: 700; font-size: 1.2rem; text-decoration: none; color: var(--text); }
     .logo i { background: var(--text); color: #fff; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
-    .nav-subtitle { color: var(--text-muted); font-size: 0.85rem; }
+    .nav-subtitle { color: var(--text-muted); font-size: .85rem; }
 
-    /* Breadcrumb */
-    .breadcrumb { max-width: 800px; margin: 1.5rem auto 0; padding: 0 2rem; font-size: 0.85rem; color: var(--text-light); display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-    .breadcrumb a { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+    /* ── Breadcrumb ── */
+    .breadcrumb { max-width: 800px; margin: 1.5rem auto 0; padding: 0 2rem; font-size: .85rem; color: var(--text-light); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .breadcrumb a { color: var(--text-muted); text-decoration: none; }
     .breadcrumb a:hover { color: var(--accent); }
     .breadcrumb .separator { color: var(--text-light); }
     .breadcrumb .current { color: var(--text); font-weight: 500; }
 
-    /* Main Content */
+    /* ── Container ── */
     .container { max-width: 800px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
 
-    /* Detail Card */
+    /* ── Detail card ── */
     .detail-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); padding: 2rem; position: relative; margin-bottom: 1.5rem; }
     .detail-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--accent); border-radius: 12px 12px 0 0; }
 
-    /* Badges */
-    .badges-row { display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
-    .category-badge { padding: 0.4rem 0.85rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; border: none; }
-    .category-badge i { font-size: 0.7rem; }
-    .category-badge.parking_ban { background: var(--badge-parking); color: var(--badge-parking-text); }
-    .category-badge.event { background: var(--badge-event); color: var(--badge-event-text); }
-    .category-badge.utility_cut { background: var(--badge-utility); color: var(--badge-utility-text); }
-    .category-badge.roadwork { background: var(--badge-roadwork); color: var(--badge-roadwork-text); }
-    .category-badge.street_closure { background: var(--badge-closure); color: var(--badge-closure-text); }
-    .category-badge.other { background: var(--badge-other); color: var(--badge-other-text); }
-    .status-badge { padding: 0.4rem 0.85rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; background: #fffbeb; color: #b45309; }
-    .status-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+    /* ── Badges ── */
+    .badges-row { display: flex; gap: .75rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .category-badge { padding: .4rem .85rem; border-radius: 20px; font-size: .8rem; font-weight: 600; display: flex; align-items: center; gap: .4rem; }
+    .category-badge.parking_ban   { background: var(--badge-parking);  color: var(--badge-parking-text); }
+    .category-badge.event         { background: var(--badge-event);    color: var(--badge-event-text); }
+    .category-badge.utility_cut   { background: var(--badge-utility);  color: var(--badge-utility-text); }
+    .category-badge.roadwork      { background: var(--badge-roadwork); color: var(--badge-roadwork-text); }
+    .category-badge.street_closure{ background: var(--badge-closure);  color: var(--badge-closure-text); }
+    .category-badge.other         { background: var(--badge-other);    color: var(--badge-other-text); }
+    .status-badge { padding: .4rem .85rem; border-radius: 20px; font-size: .8rem; font-weight: 600; display: flex; align-items: center; gap: .4rem; }
+    .status-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
 
-    /* Title */
+    /* ── Typography ── */
     .detail-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; line-height: 1.3; }
-    .detail-muni { font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; margin-bottom: 1.25rem; }
-    .detail-muni i { font-size: 0.8rem; }
+    .detail-muni  { font-size: .85rem; color: var(--text-muted); display: flex; align-items: center; gap: .4rem; margin-bottom: 1.25rem; }
     .detail-description { font-size: 1rem; color: #374151; line-height: 1.7; margin-bottom: 1.5rem; }
 
-    /* Info Grid */
+    /* ── Info grid ── */
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
     .info-block { background: #fafafa; border-radius: 10px; padding: 1.25rem; border: 1px solid var(--border); }
-    .info-block-title { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
-    .info-row { display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .info-block-title { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .75rem; }
+    .info-row { display: flex; align-items: center; gap: .6rem; font-size: .9rem; margin-bottom: .5rem; }
     .info-row:last-child { margin-bottom: 0; }
-    .info-row i { color: var(--text-light); font-size: 0.85rem; width: 18px; text-align: center; }
+    .info-row i { color: var(--text-light); font-size: .85rem; width: 18px; text-align: center; }
     .info-row strong { font-weight: 600; }
-    .info-row a { color: var(--accent); text-decoration: none; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; }
+    .info-row a { color: var(--accent); text-decoration: none; font-size: .85rem; display: flex; align-items: center; gap: .3rem; }
     .info-row a:hover { text-decoration: underline; }
 
-    /* Affected Streets */
+    /* ── Affected streets ── */
     .streets-section { margin-bottom: 1.5rem; }
-    .streets-title { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
-    .streets-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-    .street-tag { background: #f3f4f6; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.85rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem; }
-    .street-tag i { color: var(--text-light); font-size: 0.75rem; }
+    .streets-title { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .75rem; }
+    .streets-tags { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .street-tag { background: #f3f4f6; border: 1px solid var(--border); border-radius: 8px; padding: .5rem .85rem; font-size: .85rem; display: flex; align-items: center; gap: .4rem; cursor: pointer; transition: all .15s; }
+    .street-tag:hover { background: #fef3c7; border-color: var(--accent); }
+    .street-tag i { color: var(--text-light); font-size: .75rem; }
 
-    /* Published Date */
-    .published-date { font-size: 0.8rem; color: var(--text-light); padding-top: 1rem; border-top: 1px solid var(--border); }
+    /* ── Published ── */
+    .published-date { font-size: .8rem; color: var(--text-light); padding-top: 1rem; border-top: 1px solid var(--border); }
 
-    /* Map Card */
-    .map-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
-    .map-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 0.95rem; }
+    /* ── Map card ── */
+    .map-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; margin-bottom: 1.5rem; }
+    .map-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .map-header-left { display: flex; align-items: center; gap: .5rem; font-weight: 600; font-size: .95rem; }
     .map-header i { color: var(--text-muted); }
-    .map-container { width: 100%; height: 350px; border: none; }
 
-    /* Loading */
+    /* Legend */
+    .map-legend { display: flex; align-items: center; gap: 1rem; font-size: .8rem; color: var(--text-muted); flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: .35rem; }
+    .legend-line { width: 20px; height: 4px; border-radius: 2px; }
+    .legend-line.street  { background: #ef4444; }
+    .legend-line.zone    { background: #f59e0b; opacity: .6; }
+    .legend-dot-pin { width: 10px; height: 10px; border-radius: 50%; background: #2563eb; border: 2px solid #fff; box-shadow: 0 0 0 1px #2563eb; }
+
+    /* Map status bar */
+    .map-status { padding: .5rem 1.5rem; background: #f9fafb; border-bottom: 1px solid var(--border); font-size: .8rem; color: var(--text-muted); display: flex; align-items: center; gap: .5rem; min-height: 32px; }
+    .map-status.success { background: #ecfdf5; color: #059669; }
+    .map-status.warning { background: #fffbeb; color: #b45309; }
+    .map-status.error   { background: #fef2f2; color: #dc2626; }
+
+    /* The actual map */
+    #leafletMap { width: 100%; height: 400px; }
+
+    /* Map open-in button */
+    .map-footer { padding: .75rem 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
+    .open-maps-btn { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; color: var(--accent); text-decoration: none; font-weight: 500; }
+    .open-maps-btn:hover { text-decoration: underline; }
+
+    /* ── Loading / error states ── */
     .loading-detail { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
     .loading-detail i { font-size: 2rem; margin-bottom: 1rem; display: block; }
     .error-detail { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
-    .error-detail i { font-size: 2rem; margin-bottom: 1rem; display: block; color: #ef4444; }
+    .error-detail i { font-size: 2rem; margin-bottom: 1rem; display: block; color: var(--danger); }
     .error-detail a { color: var(--accent); text-decoration: none; }
 
-    /* Responsive */
+    /* ── Responsive ── */
     @media (max-width: 768px) {
       .top-nav { padding: 1rem; }
       .breadcrumb { padding: 0 1rem; margin-top: 1rem; }
@@ -123,11 +134,14 @@
       .detail-card { padding: 1.5rem; }
       .info-grid { grid-template-columns: 1fr; }
       .detail-title { font-size: 1.25rem; }
+      #leafletMap { height: 300px; }
+      .map-legend { display: none; }
     }
   </style>
 </head>
 <body>
-  <!-- Top Nav -->
+
+  <!-- Nav -->
   <nav class="top-nav">
     <a href="/ayuntamientos/index.html" class="logo">
       <i class="fas fa-bell"></i>
@@ -149,10 +163,347 @@
   <main class="container" id="mainContent">
     <div class="loading-detail">
       <i class="fas fa-spinner fa-spin"></i>
-      Cargando detalle de la alerta...
+      Cargando detalle de la alerta…
     </div>
   </main>
 
-  <script type="module" src="/ayuntamientos/incident-detail.js"></script>
+  <!-- Leaflet JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+  <script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const FB = {
+    apiKey:"AIzaSyBzidosSZRxKmjMIrg0zAjYRt_rbohcHLU",
+    authDomain:"saas-45027.firebaseapp.com",
+    projectId:"saas-45027",
+    storageBucket:"saas-45027.firebasestorage.app",
+    messagingSenderId:"117144809845",
+    appId:"1:117144809845:web:83153cf3aa6bc97851233c"
+  };
+  const app = initializeApp(FB);
+  const db  = getFirestore(app);
+
+  // ── Label maps ────────────────────────────────────────────────────────
+  const catIcons  = {street_closure:"fa-road",parking_ban:"fa-square-parking",utility_cut:"fa-bolt",roadwork:"fa-helmet-safety",event:"fa-calendar-check",other:"fa-circle-info"};
+  const catLabels = {street_closure:"Corte de calles",parking_ban:"Prohibición aparcamiento",utility_cut:"Corte suministros",roadwork:"Obras",event:"Evento",other:"Otro"};
+  const stLabels  = {planned:"Próxima",ongoing:"En curso",completed:"Finalizada",cancelled:"Cancelada"};
+  const stColors  = {planned:{bg:"#fffbeb",text:"#b45309"},ongoing:{bg:"#ecfdf5",text:"#059669"},completed:{bg:"#f3f4f6",text:"#6b7280"},cancelled:{bg:"#fef2f2",text:"#dc2626"}};
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  function getId() { return new URLSearchParams(window.location.search).get("id"); }
+
+  function formatDate(ts) {
+    if (!ts) return "Sin fecha";
+    return ts.toDate().toLocaleDateString("es-ES", {day:"numeric",month:"long",year:"numeric"});
+  }
+
+  function calcDuration(start, end) {
+    if (!start || !end) return null;
+    const days = Math.ceil((end - start) / 86400000);
+    return `${Math.max(days,1)} ${days===1?"día":"días"}`;
+  }
+
+  function setMapStatus(msg, type="") {
+    const el = document.getElementById("mapStatus");
+    if (!el) return;
+    el.textContent = msg;
+    el.className = "map-status " + type;
+  }
+
+  // ── Nominatim geocoder ────────────────────────────────────────────────
+  // Returns {lat, lon, boundingbox, geojson} or null
+  async function geocode(query, city="") {
+    const q = encodeURIComponent(city ? query + ", " + city : query);
+    const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&polygon_geojson=1&addressdetails=1`;
+    try {
+      const res  = await fetch(url, { headers: { "Accept-Language": "es" } });
+      const data = await res.json();
+      return data.length ? data[0] : null;
+    } catch (e) {
+      console.warn("Nominatim error:", e);
+      return null;
+    }
+  }
+
+  // ── Leaflet map builder ───────────────────────────────────────────────
+  let leafletMap = null;
+
+  async function buildMap(data) {
+    // Initialize Leaflet
+    leafletMap = L.map("leafletMap", { zoomControl: true, scrollWheelZoom: false });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19
+    }).addTo(leafletMap);
+
+    const address        = data.location?.address || "";
+    const affectedStreets = data.affected_streets || [];
+    // Try to extract city context from main address for better geocoding
+    const cityContext    = address.split(",").slice(-2).join(",").trim();
+
+    setMapStatus("🔍 Geocodificando ubicación…");
+
+    // ── STEP 1: Geocode main address for map center ────────────────────
+    const mainGeo = await geocode(address);
+
+    if (!mainGeo) {
+      setMapStatus("⚠️ No se pudo localizar la dirección en el mapa.", "warning");
+      leafletMap.setView([40.416775, -3.70379], 6); // España
+      return;
+    }
+
+    const centerLat = parseFloat(mainGeo.lat);
+    const centerLon = parseFloat(mainGeo.lon);
+
+    // ── STEP 2: Streets or zone highlight ─────────────────────────────
+    const layers = [];
+
+    if (affectedStreets.length > 0) {
+      setMapStatus(`🔍 Dibujando ${affectedStreets.length} calle(s) afectada(s)…`);
+
+      // Accent colors cycle for multiple streets
+      const COLORS = ["#ef4444","#f59e0b","#8b5cf6","#06b6d4","#10b981"];
+      let found = 0;
+
+      for (let i = 0; i < affectedStreets.length; i++) {
+        const street = affectedStreets[i].trim();
+        if (!street) continue;
+
+        // Add city context for better results
+        const geo = await geocode(street, cityContext);
+
+        if (geo && geo.geojson) {
+          const color = COLORS[i % COLORS.length];
+          const gj    = geo.geojson;
+
+          // Draw the GeoJSON geometry (LineString or Polygon from Nominatim)
+          const layer = L.geoJSON(gj, {
+            style: {
+              color:       color,
+              weight:      6,
+              opacity:     0.85,
+              fillColor:   color,
+              fillOpacity: 0.25,
+              lineCap:     "round",
+              lineJoin:    "round"
+            }
+          }).addTo(leafletMap);
+
+          layer.bindTooltip(`<strong>${street}</strong>`, {
+            permanent: false,
+            direction: "top",
+            className: "street-tooltip"
+          });
+
+          layers.push(layer);
+          found++;
+
+          // Small delay to respect Nominatim rate limit (1 req/s)
+          if (i < affectedStreets.length - 1) await sleep(1100);
+
+        } else if (geo) {
+          // Nominatim found location but no geometry — add a marker instead
+          const color = COLORS[i % COLORS.length];
+          const mk = L.circleMarker([parseFloat(geo.lat), parseFloat(geo.lon)], {
+            radius: 10, color: color, fillColor: color, fillOpacity: 0.5, weight: 2
+          }).addTo(leafletMap);
+          mk.bindTooltip(`<strong>${street}</strong>`, {permanent:false});
+          layers.push(mk);
+          found++;
+          if (i < affectedStreets.length - 1) await sleep(1100);
+        }
+      }
+
+      if (found > 0) {
+        // Fit map to all street layers
+        const group = L.featureGroup(layers);
+        leafletMap.fitBounds(group.getBounds().pad(0.25));
+        setMapStatus(`✅ ${found} de ${affectedStreets.length} calle(s) dibujada(s) en el mapa.`, "success");
+      } else {
+        // Streets not found — fall back to address point
+        drawAddressPin(centerLat, centerLon, address, data);
+        setMapStatus("⚠️ No se encontraron las calles exactas. Mostrando ubicación general.", "warning");
+      }
+
+    } else {
+      // No streets — draw main address with radius zone
+      drawAddressPin(centerLat, centerLon, address, data);
+
+      // If bounding box is available, draw a soft zone polygon
+      if (mainGeo.boundingbox) {
+        const bb = mainGeo.boundingbox.map(parseFloat);
+        // bb = [minlat, maxlat, minlon, maxlon]
+        const bounds = [[bb[0], bb[2]], [bb[1], bb[3]]];
+        L.rectangle(bounds, {
+          color: "#f59e0b", weight: 2, opacity: 0.6,
+          fillColor: "#f59e0b", fillOpacity: 0.1,
+          dashArray: "6 4"
+        }).addTo(leafletMap);
+      }
+
+      leafletMap.setView([centerLat, centerLon], 16);
+      setMapStatus("📍 Mostrando ubicación general de la alerta.", "success");
+    }
+  }
+
+  function drawAddressPin(lat, lon, address, data) {
+    // Custom amber pin
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="
+        background:#f59e0b;color:#fff;width:36px;height:36px;
+        border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 2px 8px rgba(0,0,0,0.3);border:3px solid #fff;">
+        <i class="fas fa-map-marker-alt" style="transform:rotate(45deg);font-size:.9rem;"></i>
+      </div>`,
+      iconSize: [36, 36],
+      iconAnchor: [18, 36],
+      popupAnchor: [0, -36]
+    });
+    const marker = L.marker([lat, lon], { icon }).addTo(leafletMap);
+    marker.bindPopup(`<strong>${data.title}</strong><br><small>${address}</small>`).openPopup();
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Main loader ───────────────────────────────────────────────────────
+  async function loadDetail() {
+    const id = getId();
+    if (!id) { showError("No se ha especificado ninguna alerta."); return; }
+
+    try {
+      const snap = await getDoc(doc(db, "incidents", id));
+      if (!snap.exists()) { showError("Esta alerta no existe o ha sido eliminada."); return; }
+
+      const data = snap.data();
+
+      // Duration
+      let duration = null;
+      if (data.start_date && data.end_date)
+        duration = calcDuration(data.start_date.toDate(), data.end_date.toDate());
+
+      const mapsQuery   = encodeURIComponent(data.location?.address || "");
+      const mapsUrl     = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+      const affectedStreets = data.affected_streets || [];
+      const stColor     = stColors[data.status] || stColors.planned;
+
+      // Streets tags HTML
+      const streetsHtml = affectedStreets.length > 0 ? `
+        <div class="streets-section">
+          <div class="streets-title">Calles afectadas</div>
+          <div class="streets-tags">
+            ${affectedStreets.map(s => `
+              <span class="street-tag"><i class="fas fa-map-pin"></i> ${s}</span>
+            `).join("")}
+          </div>
+        </div>` : "";
+
+      const publishedDate = data.created_at ? data.created_at.toDate() : new Date();
+      const publishedText = `Publicado el ${publishedDate.toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
+
+      // Legend items
+      const legendHtml = affectedStreets.length > 0
+        ? `<div class="legend-item"><span class="legend-line street"></span> Calle afectada</div>`
+        : `<div class="legend-item"><span class="legend-dot-pin"></span> Ubicación</div>
+           <div class="legend-item"><span class="legend-line zone"></span> Zona aproximada</div>`;
+
+      // Render HTML
+      document.getElementById("mainContent").innerHTML = `
+
+        <!-- Detail card -->
+        <article class="detail-card">
+          <div class="badges-row">
+            <span class="category-badge ${data.category}">
+              <i class="fas ${catIcons[data.category]||"fa-circle-info"}"></i>
+              ${catLabels[data.category]||data.category}
+            </span>
+            <span class="status-badge" style="background:${stColor.bg};color:${stColor.text}">
+              <span class="dot"></span>
+              ${stLabels[data.status]||data.status}
+            </span>
+          </div>
+
+          <h1 class="detail-title">${data.title}</h1>
+
+          <p class="detail-muni">
+            <i class="fas fa-landmark"></i>
+            ${data.municipalityName||"Ayuntamiento"}${data.region ? " — "+data.region : ""}
+          </p>
+
+          <p class="detail-description">${data.description||"Sin descripción disponible."}</p>
+
+          <div class="info-grid">
+            <div class="info-block">
+              <div class="info-block-title">Período</div>
+              <div class="info-row"><i class="fas fa-calendar-plus"></i><span>Inicio: <strong>${formatDate(data.start_date)}</strong></span></div>
+              <div class="info-row"><i class="fas fa-calendar-minus"></i><span>Fin: <strong>${data.end_date ? formatDate(data.end_date) : "Sin fecha fin"}</strong></span></div>
+              ${duration ? `<div class="info-row"><i class="fas fa-clock"></i><span>Duración: <strong>${duration}</strong></span></div>` : ""}
+            </div>
+            <div class="info-block">
+              <div class="info-block-title">Ubicación</div>
+              <div class="info-row"><i class="fas fa-map-marker-alt"></i><span>${data.location?.address||"No especificada"}</span></div>
+              <div class="info-row">
+                <i class="fas fa-external-link-alt"></i>
+                <a href="${mapsUrl}" target="_blank" rel="noopener">Ver en Google Maps <i class="fas fa-arrow-right" style="font-size:.7rem"></i></a>
+              </div>
+            </div>
+          </div>
+
+          ${streetsHtml}
+
+          <p class="published-date">${publishedText}</p>
+        </article>
+
+        <!-- Map card -->
+        <section class="map-card">
+          <div class="map-header">
+            <div class="map-header-left">
+              <i class="fas fa-map"></i>
+              Zona afectada
+            </div>
+            <div class="map-legend">${legendHtml}</div>
+          </div>
+          <div class="map-status" id="mapStatus">
+            <i class="fas fa-spinner fa-spin"></i> Cargando mapa…
+          </div>
+          <div id="leafletMap"></div>
+          <div class="map-footer">
+            <a href="${mapsUrl}" target="_blank" rel="noopener" class="open-maps-btn">
+              <i class="fas fa-external-link-alt"></i> Abrir en Google Maps
+            </a>
+          </div>
+        </section>
+      `;
+
+      // Breadcrumb
+      document.getElementById("breadcrumbMuni").innerHTML = `<a href="/ayuntamientos/index.html">${data.municipalityName||"Ayuntamiento"}</a>`;
+      document.getElementById("breadcrumbTitle").textContent = data.title;
+      document.title = `${data.title} — Alertas Municipales`;
+
+      // Build Leaflet map (after DOM is ready)
+      await buildMap(data);
+
+    } catch (err) {
+      console.error("loadDetail:", err);
+      showError("Error al cargar la alerta. Inténtalo de nuevo.");
+    }
+  }
+
+  function showError(message) {
+    document.getElementById("mainContent").innerHTML = `
+      <div class="error-detail">
+        <i class="fas fa-exclamation-circle"></i>
+        <p>${message}</p><br>
+        <a href="/ayuntamientos/index.html">← Volver al listado</a>
+      </div>`;
+  }
+
+  loadDetail();
+  </script>
 </body>
 </html>
