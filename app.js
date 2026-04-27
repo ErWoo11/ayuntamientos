@@ -153,7 +153,7 @@ async function loadIncidents(reset = true) {
           </div>`;
         document.getElementById("resultsCount").textContent = "0 alertas encontradas";
         document.getElementById("loadMore").classList.add("hidden");
-        updateHeroStats(0, 0);
+        updateHeroStatsFromDB();
         return;
       }
       container.innerHTML = "";
