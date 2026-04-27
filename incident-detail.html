@@ -6,142 +6,156 @@
   <meta name="theme-color" content="#2563eb">
   <title>Detalle de alerta - Alertas Municipales</title>
 
-  <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 
   <style>
     :root {
-      --bg: #fafafa;
-      --card-bg: #ffffff;
-      --text: #1a1a1a;
-      --text-muted: #6b7280;
-      --text-light: #9ca3af;
-      --border: #e5e7eb;
-      --accent: #f59e0b;
-      --danger: #ef4444;
-      --badge-parking: #fef2f2;   --badge-parking-text: #be123c;
-      --badge-event: #ecfdf5;     --badge-event-text: #059669;
-      --badge-utility: #eff6ff;   --badge-utility-text: #1d4ed8;
-      --badge-roadwork: #fffbeb;  --badge-roadwork-text: #b45309;
-      --badge-closure: #fef2f2;   --badge-closure-text: #dc2626;
-      --badge-other: #f3f4f6;     --badge-other-text: #374151;
+      --bg:#fafafa; --card-bg:#fff; --text:#1a1a1a; --text-muted:#6b7280;
+      --text-light:#9ca3af; --border:#e5e7eb; --accent:#f59e0b;
+      --danger:#ef4444;
+      --badge-parking:#fef2f2;  --badge-parking-text:#be123c;
+      --badge-event:#ecfdf5;    --badge-event-text:#059669;
+      --badge-utility:#eff6ff;  --badge-utility-text:#1d4ed8;
+      --badge-roadwork:#fffbeb; --badge-roadwork-text:#b45309;
+      --badge-closure:#fef2f2;  --badge-closure-text:#dc2626;
+      --badge-other:#f3f4f6;    --badge-other-text:#374151;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    body { background: var(--bg); color: var(--text); line-height: 1.6; }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    body{background:var(--bg);color:var(--text);line-height:1.6}
 
     /* ── Nav ── */
-    .top-nav { background: #fff; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1000; }
-    .logo { display: flex; align-items: center; gap: .75rem; font-weight: 700; font-size: 1.2rem; text-decoration: none; color: var(--text); }
-    .logo i { background: var(--text); color: #fff; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
-    .nav-subtitle { color: var(--text-muted); font-size: .85rem; }
+    .top-nav{background:#fff;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1000}
+    .logo{display:flex;align-items:center;gap:.75rem;font-weight:700;font-size:1.2rem;text-decoration:none;color:var(--text)}
+    .logo i{background:var(--text);color:#fff;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px}
+    .nav-subtitle{color:var(--text-muted);font-size:.85rem}
 
     /* ── Breadcrumb ── */
-    .breadcrumb { max-width: 800px; margin: 1.5rem auto 0; padding: 0 2rem; font-size: .85rem; color: var(--text-light); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
-    .breadcrumb a { color: var(--text-muted); text-decoration: none; }
-    .breadcrumb a:hover { color: var(--accent); }
-    .breadcrumb .separator { color: var(--text-light); }
-    .breadcrumb .current { color: var(--text); font-weight: 500; }
+    .breadcrumb{max-width:800px;margin:1.5rem auto 0;padding:0 2rem;font-size:.85rem;color:var(--text-light);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    .breadcrumb a{color:var(--text-muted);text-decoration:none}
+    .breadcrumb a:hover{color:var(--accent)}
+    .breadcrumb .separator{color:var(--text-light)}
+    .breadcrumb .current{color:var(--text);font-weight:500}
 
     /* ── Container ── */
-    .container { max-width: 800px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+    .container{max-width:800px;margin:0 auto;padding:1.5rem 2rem 3rem}
 
     /* ── Detail card ── */
-    .detail-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); padding: 2rem; position: relative; margin-bottom: 1.5rem; }
-    .detail-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--accent); border-radius: 12px 12px 0 0; }
+    .detail-card{background:var(--card-bg);border-radius:12px;border:1px solid var(--border);padding:2rem;position:relative;margin-bottom:1.5rem}
+    .detail-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--accent);border-radius:12px 12px 0 0}
 
     /* ── Badges ── */
-    .badges-row { display: flex; gap: .75rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
-    .category-badge { padding: .4rem .85rem; border-radius: 20px; font-size: .8rem; font-weight: 600; display: flex; align-items: center; gap: .4rem; }
-    .category-badge.parking_ban   { background: var(--badge-parking);  color: var(--badge-parking-text); }
-    .category-badge.event         { background: var(--badge-event);    color: var(--badge-event-text); }
-    .category-badge.utility_cut   { background: var(--badge-utility);  color: var(--badge-utility-text); }
-    .category-badge.roadwork      { background: var(--badge-roadwork); color: var(--badge-roadwork-text); }
-    .category-badge.street_closure{ background: var(--badge-closure);  color: var(--badge-closure-text); }
-    .category-badge.other         { background: var(--badge-other);    color: var(--badge-other-text); }
-    .status-badge { padding: .4rem .85rem; border-radius: 20px; font-size: .8rem; font-weight: 600; display: flex; align-items: center; gap: .4rem; }
-    .status-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
+    .badges-row{display:flex;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap}
+    .category-badge{padding:.4rem .85rem;border-radius:20px;font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:.4rem}
+    .category-badge.parking_ban   {background:var(--badge-parking); color:var(--badge-parking-text)}
+    .category-badge.event         {background:var(--badge-event);   color:var(--badge-event-text)}
+    .category-badge.utility_cut   {background:var(--badge-utility); color:var(--badge-utility-text)}
+    .category-badge.roadwork      {background:var(--badge-roadwork);color:var(--badge-roadwork-text)}
+    .category-badge.street_closure{background:var(--badge-closure); color:var(--badge-closure-text)}
+    .category-badge.other         {background:var(--badge-other);   color:var(--badge-other-text)}
+    .status-badge{padding:.4rem .85rem;border-radius:20px;font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:.4rem}
+    .status-badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
 
     /* ── Typography ── */
-    .detail-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; line-height: 1.3; }
-    .detail-muni  { font-size: .85rem; color: var(--text-muted); display: flex; align-items: center; gap: .4rem; margin-bottom: 1.25rem; }
-    .detail-description { font-size: 1rem; color: #374151; line-height: 1.7; margin-bottom: 1.5rem; }
+    .detail-title{font-size:1.5rem;font-weight:700;margin-bottom:1rem;line-height:1.3}
+    .detail-muni{font-size:.85rem;color:var(--text-muted);display:flex;align-items:center;gap:.4rem;margin-bottom:1.25rem}
+    .detail-description{font-size:1rem;color:#374151;line-height:1.7;margin-bottom:1.5rem}
 
     /* ── Info grid ── */
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
-    .info-block { background: #fafafa; border-radius: 10px; padding: 1.25rem; border: 1px solid var(--border); }
-    .info-block-title { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .75rem; }
-    .info-row { display: flex; align-items: center; gap: .6rem; font-size: .9rem; margin-bottom: .5rem; }
-    .info-row:last-child { margin-bottom: 0; }
-    .info-row i { color: var(--text-light); font-size: .85rem; width: 18px; text-align: center; }
-    .info-row strong { font-weight: 600; }
-    .info-row a { color: var(--accent); text-decoration: none; font-size: .85rem; display: flex; align-items: center; gap: .3rem; }
-    .info-row a:hover { text-decoration: underline; }
+    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
+    .info-block{background:#fafafa;border-radius:10px;padding:1.25rem;border:1px solid var(--border)}
+    .info-block-title{font-size:.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem}
+    .info-row{display:flex;align-items:center;gap:.6rem;font-size:.9rem;margin-bottom:.5rem}
+    .info-row:last-child{margin-bottom:0}
+    .info-row i{color:var(--text-light);font-size:.85rem;width:18px;text-align:center}
+    .info-row strong{font-weight:600}
+    .info-row a{color:var(--accent);text-decoration:none;font-size:.85rem;display:flex;align-items:center;gap:.3rem}
+    .info-row a:hover{text-decoration:underline}
 
     /* ── Affected streets ── */
-    .streets-section { margin-bottom: 1.5rem; }
-    .streets-title { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .75rem; }
-    .streets-tags { display: flex; flex-wrap: wrap; gap: .5rem; }
-    .street-tag { background: #f3f4f6; border: 1px solid var(--border); border-radius: 8px; padding: .5rem .85rem; font-size: .85rem; display: flex; align-items: center; gap: .4rem; cursor: pointer; transition: all .15s; }
-    .street-tag:hover { background: #fef3c7; border-color: var(--accent); }
-    .street-tag i { color: var(--text-light); font-size: .75rem; }
+    .streets-section{margin-bottom:1.5rem}
+    .streets-title{font-size:.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem}
+    .streets-tags{display:flex;flex-wrap:wrap;gap:.5rem}
+    .street-tag{background:#f3f4f6;border:1px solid var(--border);border-radius:8px;padding:.5rem .85rem;font-size:.85rem;display:flex;align-items:center;gap:.4rem;cursor:pointer;transition:all .15s}
+    .street-tag:hover{background:#fef3c7;border-color:var(--accent)}
+    .street-tag i{color:var(--text-light);font-size:.75rem}
 
     /* ── Published ── */
-    .published-date { font-size: .8rem; color: var(--text-light); padding-top: 1rem; border-top: 1px solid var(--border); }
+    .published-date{font-size:.8rem;color:var(--text-light);padding-top:1rem;border-top:1px solid var(--border)}
 
     /* ── Map card ── */
-    .map-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; margin-bottom: 1.5rem; }
-    .map-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
-    .map-header-left { display: flex; align-items: center; gap: .5rem; font-weight: 600; font-size: .95rem; }
-    .map-header i { color: var(--text-muted); }
-
-    /* Legend */
-    .map-legend { display: flex; align-items: center; gap: 1rem; font-size: .8rem; color: var(--text-muted); flex-wrap: wrap; }
-    .legend-item { display: flex; align-items: center; gap: .35rem; }
-    .legend-line { width: 20px; height: 4px; border-radius: 2px; }
-    .legend-line.street  { background: #ef4444; }
-    .legend-line.zone    { background: #f59e0b; opacity: .6; }
-    .legend-dot-pin { width: 10px; height: 10px; border-radius: 50%; background: #2563eb; border: 2px solid #fff; box-shadow: 0 0 0 1px #2563eb; }
+    .map-card{background:var(--card-bg);border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:1.5rem}
+    .map-header{padding:1rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
+    .map-header-left{display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:.95rem}
+    .map-header i{color:var(--text-muted)}
+    .map-legend{display:flex;align-items:center;gap:.85rem;font-size:.78rem;color:var(--text-muted);flex-wrap:wrap}
+    .legend-item{display:flex;align-items:center;gap:.35rem}
+    .legend-dot{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1.5px currentColor;flex-shrink:0}
+    .legend-dot.current{background:#f59e0b;color:#f59e0b;width:16px;height:16px}
+    .legend-dot.other{background:#6b7280;color:#6b7280}
+    .legend-line-swatch{width:20px;height:4px;border-radius:2px;flex-shrink:0}
 
     /* Map status bar */
-    .map-status { padding: .5rem 1.5rem; background: #f9fafb; border-bottom: 1px solid var(--border); font-size: .8rem; color: var(--text-muted); display: flex; align-items: center; gap: .5rem; min-height: 32px; }
-    .map-status.success { background: #ecfdf5; color: #059669; }
-    .map-status.warning { background: #fffbeb; color: #b45309; }
-    .map-status.error   { background: #fef2f2; color: #dc2626; }
+    .map-status{padding:.5rem 1.5rem;background:#f9fafb;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--text-muted);display:flex;align-items:center;gap:.5rem;min-height:32px;transition:all .3s}
+    .map-status.success{background:#ecfdf5;color:#059669}
+    .map-status.warning{background:#fffbeb;color:#b45309}
+    .map-status.error  {background:#fef2f2;color:#dc2626}
 
-    /* The actual map */
-    #leafletMap { width: 100%; height: 400px; }
+    /* Map tabs */
+    .map-tabs{display:flex;gap:0;border-bottom:1px solid var(--border)}
+    .map-tab{flex:1;padding:.6rem 1rem;border:none;background:#f9fafb;cursor:pointer;font-size:.82rem;font-weight:500;color:var(--text-muted);border-right:1px solid var(--border);transition:all .15s}
+    .map-tab:last-child{border-right:none}
+    .map-tab.active{background:#fff;color:var(--text);border-bottom:2px solid var(--accent);margin-bottom:-1px}
+    .map-tab:hover:not(.active){background:#fff;color:var(--text)}
 
-    /* Map open-in button */
-    .map-footer { padding: .75rem 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
-    .open-maps-btn { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; color: var(--accent); text-decoration: none; font-weight: 500; }
-    .open-maps-btn:hover { text-decoration: underline; }
+    /* Leaflet map */
+    #leafletMap{width:100%;height:440px}
+
+    /* Map footer */
+    .map-footer{padding:.75rem 1.5rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem}
+    .incident-counter{font-size:.8rem;color:var(--text-muted);display:flex;align-items:center;gap:.4rem}
+    .open-maps-btn{display:inline-flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--accent);text-decoration:none;font-weight:500}
+    .open-maps-btn:hover{text-decoration:underline}
+
+    /* ── Custom Leaflet popup ── */
+    .leaflet-popup-content-wrapper{border-radius:10px!important;box-shadow:0 4px 16px rgba(0,0,0,.15)!important;border:1px solid var(--border)!important;padding:0!important}
+    .leaflet-popup-content{margin:0!important;min-width:180px}
+    .inc-popup{padding:.75rem 1rem}
+    .inc-popup-cat{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem;display:flex;align-items:center;gap:.3rem}
+    .inc-popup-title{font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:.25rem;line-height:1.3}
+    .inc-popup-addr{font-size:.78rem;color:var(--text-muted);margin-bottom:.5rem;display:flex;align-items:center;gap:.3rem}
+    .inc-popup-link{font-size:.78rem;color:var(--accent);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.25rem}
+    .inc-popup-link:hover{text-decoration:underline}
+    .inc-popup-current-badge{display:inline-flex;align-items:center;gap:.3rem;background:#fef3c7;color:#92400e;font-size:.72rem;font-weight:700;padding:.2rem .5rem;border-radius:12px;margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.04em}
+
+    /* ── Custom marker icons ── */
+    .map-pin{display:flex;align-items:center;justify-content:center;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);transition:transform .15s}
+    .map-pin:hover{transform:rotate(-45deg) scale(1.2)}
+    .map-pin i{transform:rotate(45deg)}
+    .map-pin.current-pin{box-shadow:0 0 0 4px rgba(245,158,11,.35),0 2px 8px rgba(0,0,0,.3)}
 
     /* ── Loading / error states ── */
-    .loading-detail { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
-    .loading-detail i { font-size: 2rem; margin-bottom: 1rem; display: block; }
-    .error-detail { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
-    .error-detail i { font-size: 2rem; margin-bottom: 1rem; display: block; color: var(--danger); }
-    .error-detail a { color: var(--accent); text-decoration: none; }
+    .loading-detail{text-align:center;padding:4rem 2rem;color:var(--text-muted)}
+    .loading-detail i{font-size:2rem;margin-bottom:1rem;display:block}
+    .error-detail{text-align:center;padding:4rem 2rem;color:var(--text-muted)}
+    .error-detail i{font-size:2rem;margin-bottom:1rem;display:block;color:var(--danger)}
+    .error-detail a{color:var(--accent);text-decoration:none}
 
-    /* ── Responsive ── */
-    @media (max-width: 768px) {
-      .top-nav { padding: 1rem; }
-      .breadcrumb { padding: 0 1rem; margin-top: 1rem; }
-      .container { padding: 1rem 1rem 2rem; }
-      .detail-card { padding: 1.5rem; }
-      .info-grid { grid-template-columns: 1fr; }
-      .detail-title { font-size: 1.25rem; }
-      #leafletMap { height: 300px; }
-      .map-legend { display: none; }
+    @media(max-width:768px){
+      .top-nav{padding:1rem}
+      .breadcrumb{padding:0 1rem;margin-top:1rem}
+      .container{padding:1rem 1rem 2rem}
+      .detail-card{padding:1.5rem}
+      .info-grid{grid-template-columns:1fr}
+      .detail-title{font-size:1.25rem}
+      #leafletMap{height:320px}
+      .map-legend{display:none}
+      .nav-subtitle{display:none}
     }
   </style>
 </head>
 <body>
 
-  <!-- Nav -->
   <nav class="top-nav">
     <a href="/ayuntamientos/index.html" class="logo">
       <i class="fas fa-bell"></i>
@@ -150,7 +164,6 @@
     <span class="nav-subtitle">Información municipal centralizada</span>
   </nav>
 
-  <!-- Breadcrumb -->
   <nav class="breadcrumb" id="breadcrumb">
     <a href="/ayuntamientos/index.html">Inicio</a>
     <span class="separator">›</span>
@@ -159,7 +172,6 @@
     <span class="current" id="breadcrumbTitle">Detalle de alerta</span>
   </nav>
 
-  <!-- Main -->
   <main class="container" id="mainContent">
     <div class="loading-detail">
       <i class="fas fa-spinner fa-spin"></i>
@@ -167,12 +179,13 @@
     </div>
   </main>
 
-  <!-- Leaflet JS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 
   <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, getDoc }
+  import { initializeApp }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, collection, query,
+           where, getDocs }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const FB = {
@@ -186,236 +199,284 @@
   const app = initializeApp(FB);
   const db  = getFirestore(app);
 
-  // ── Label maps ────────────────────────────────────────────────────────
-  const catIcons  = {street_closure:"fa-road",parking_ban:"fa-square-parking",utility_cut:"fa-bolt",roadwork:"fa-helmet-safety",event:"fa-calendar-check",other:"fa-circle-info"};
-  const catLabels = {street_closure:"Corte de calles",parking_ban:"Prohibición aparcamiento",utility_cut:"Corte suministros",roadwork:"Obras",event:"Evento",other:"Otro"};
-  const stLabels  = {planned:"Próxima",ongoing:"En curso",completed:"Finalizada",cancelled:"Cancelada"};
-  const stColors  = {planned:{bg:"#fffbeb",text:"#b45309"},ongoing:{bg:"#ecfdf5",text:"#059669"},completed:{bg:"#f3f4f6",text:"#6b7280"},cancelled:{bg:"#fef2f2",text:"#dc2626"}};
+  // ── Config maps ───────────────────────────────────────────────────────
+  const catIcons  = {
+    street_closure:"fa-road", parking_ban:"fa-square-parking",
+    utility_cut:"fa-bolt",    roadwork:"fa-helmet-safety",
+    event:"fa-calendar-check",other:"fa-circle-info"
+  };
+  const catLabels = {
+    street_closure:"Corte de calles", parking_ban:"Prohibición aparcamiento",
+    utility_cut:"Corte suministros",  roadwork:"Obras",
+    event:"Evento",                   other:"Otro"
+  };
+  const stLabels = {
+    planned:"Próxima", ongoing:"En curso",
+    completed:"Finalizada", cancelled:"Cancelada"
+  };
+  const stColors = {
+    planned:  {bg:"#fffbeb",text:"#b45309"},
+    ongoing:  {bg:"#ecfdf5",text:"#059669"},
+    completed:{bg:"#f3f4f6",text:"#6b7280"},
+    cancelled:{bg:"#fef2f2",text:"#dc2626"}
+  };
+  // Pin colors per category
+  const catColors = {
+    street_closure:"#ef4444", parking_ban:"#be123c",
+    utility_cut:"#2563eb",    roadwork:"#b45309",
+    event:"#059669",          other:"#6b7280"
+  };
 
   // ── Helpers ───────────────────────────────────────────────────────────
-  function getId() { return new URLSearchParams(window.location.search).get("id"); }
+  function getId(){ return new URLSearchParams(window.location.search).get("id"); }
 
-  function formatDate(ts) {
-    if (!ts) return "Sin fecha";
-    return ts.toDate().toLocaleDateString("es-ES", {day:"numeric",month:"long",year:"numeric"});
+  function formatDate(ts){
+    if(!ts) return "Sin fecha";
+    return ts.toDate().toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"});
+  }
+  function calcDuration(s,e){
+    if(!s||!e) return null;
+    const d=Math.ceil((e-s)/86400000);
+    return `${Math.max(d,1)} ${d===1?"día":"días"}`;
+  }
+  function setStatus(msg,type=""){
+    const el=document.getElementById("mapStatus");
+    if(!el) return;
+    el.innerHTML=msg;
+    el.className="map-status "+type;
+  }
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  // ── Nominatim ─────────────────────────────────────────────────────────
+  async function geocode(q, city=""){
+    const qs=encodeURIComponent(city?q+", "+city:q);
+    const url=`https://nominatim.openstreetmap.org/search?q=${qs}&format=json&limit=1&polygon_geojson=1&addressdetails=1`;
+    try{
+      const r=await fetch(url,{headers:{"Accept-Language":"es"}});
+      const d=await r.json();
+      return d.length?d[0]:null;
+    }catch(e){ console.warn("geocode:",e); return null; }
   }
 
-  function calcDuration(start, end) {
-    if (!start || !end) return null;
-    const days = Math.ceil((end - start) / 86400000);
-    return `${Math.max(days,1)} ${days===1?"día":"días"}`;
+  // ── Build category pin icon ───────────────────────────────────────────
+  function makePinIcon(category, isCurrent=false){
+    const color  = isCurrent ? "#f59e0b" : (catColors[category]||"#6b7280");
+    const icon   = catIcons[category] || "fa-circle-info";
+    const size   = isCurrent ? 42 : 34;
+    const pulse  = isCurrent ? `
+      <span style="position:absolute;inset:-5px;border-radius:50% 50% 50% 0;
+        border:3px solid #f59e0b;opacity:.4;animation:pulseRing 1.8s ease-out infinite;"></span>` : "";
+
+    return L.divIcon({
+      className:"",
+      html:`
+        <div style="position:relative;width:${size}px;height:${size}px;">
+          ${pulse}
+          <div class="map-pin${isCurrent?" current-pin":""}" style="
+            background:${color};color:#fff;
+            width:${size}px;height:${size}px;font-size:${isCurrent?".95rem":".78rem"};">
+            <i class="fas ${icon}"></i>
+          </div>
+        </div>`,
+      iconSize:[size,size],
+      iconAnchor:[size/2,size],
+      popupAnchor:[0,-(size+4)]
+    });
   }
 
-  function setMapStatus(msg, type="") {
-    const el = document.getElementById("mapStatus");
-    if (!el) return;
-    el.textContent = msg;
-    el.className = "map-status " + type;
+  // ── Build popup content ───────────────────────────────────────────────
+  function makePopup(incId, d, isCurrent=false){
+    const color   = catColors[d.category]||"#6b7280";
+    const icon    = catIcons[d.category]||"fa-circle-info";
+    const stColor = stColors[d.status]||stColors.planned;
+    const addr    = d.location?.address||"";
+    const currentBadge = isCurrent
+      ? `<div class="inc-popup-current-badge"><i class="fas fa-star"></i> Esta alerta</div>` : "";
+    return `
+      <div class="inc-popup">
+        ${currentBadge}
+        <div class="inc-popup-cat" style="color:${color}">
+          <i class="fas ${icon}"></i> ${catLabels[d.category]||d.category}
+          <span style="margin-left:auto;background:${stColor.bg};color:${stColor.text};
+            padding:.1rem .45rem;border-radius:20px;font-size:.7rem;">
+            ${stLabels[d.status]||d.status}
+          </span>
+        </div>
+        <div class="inc-popup-title">${d.title}</div>
+        ${addr?`<div class="inc-popup-addr"><i class="fas fa-map-marker-alt"></i>${addr}</div>`:""}
+        ${!isCurrent?`<a href="/ayuntamientos/incident-detail.html?id=${incId}" class="inc-popup-link">
+          Ver detalle <i class="fas fa-arrow-right"></i></a>`:""}
+      </div>`;
   }
 
-  // ── Nominatim geocoder ────────────────────────────────────────────────
-  // Returns {lat, lon, boundingbox, geojson} or null
-  async function geocode(query, city="") {
-    const q = encodeURIComponent(city ? query + ", " + city : query);
-    const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&polygon_geojson=1&addressdetails=1`;
-    try {
-      const res  = await fetch(url, { headers: { "Accept-Language": "es" } });
-      const data = await res.json();
-      return data.length ? data[0] : null;
-    } catch (e) {
-      console.warn("Nominatim error:", e);
-      return null;
-    }
-  }
-
-  // ── Leaflet map builder ───────────────────────────────────────────────
+  // ── Main Leaflet map ──────────────────────────────────────────────────
   let leafletMap = null;
 
-  async function buildMap(data) {
-    // Initialize Leaflet
-    leafletMap = L.map("leafletMap", { zoomControl: true, scrollWheelZoom: false });
+  async function buildMap(currentId, currentData, allIncidents){
+    leafletMap = L.map("leafletMap",{zoomControl:true,scrollWheelZoom:false});
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom:19
     }).addTo(leafletMap);
 
-    const address        = data.location?.address || "";
-    const affectedStreets = data.affected_streets || [];
-    // Try to extract city context from main address for better geocoding
-    const cityContext    = address.split(",").slice(-2).join(",").trim();
+    // Pulse animation style
+    const styleEl = document.createElement("style");
+    styleEl.textContent=`@keyframes pulseRing{0%{transform:scale(.9);opacity:.6}70%{transform:scale(1.3);opacity:0}100%{transform:scale(1.3);opacity:0}}`;
+    document.head.appendChild(styleEl);
 
-    setMapStatus("🔍 Geocodificando ubicación…");
+    const allLayers = [];  // for fitBounds
+    let geocodedCount = 0;
+    const total = allIncidents.length;
 
-    // ── STEP 1: Geocode main address for map center ────────────────────
-    const mainGeo = await geocode(address);
+    setStatus(`<i class="fas fa-spinner fa-spin"></i> Cargando ${total} incidencia(s) en el mapa…`);
 
-    if (!mainGeo) {
-      setMapStatus("⚠️ No se pudo localizar la dirección en el mapa.", "warning");
-      leafletMap.setView([40.416775, -3.70379], 6); // España
-      return;
-    }
+    // ── Process each incident ──────────────────────────────────────────
+    for(let i=0; i<allIncidents.length; i++){
+      const {id, data} = allIncidents[i];
+      const isCurrent  = id === currentId;
+      const address    = data.location?.address||"";
+      if(!address) continue;
 
-    const centerLat = parseFloat(mainGeo.lat);
-    const centerLon = parseFloat(mainGeo.lon);
+      setStatus(`<i class="fas fa-spinner fa-spin"></i> Geocodificando ${i+1}/${total}: ${data.title.substring(0,40)}…`);
 
-    // ── STEP 2: Streets or zone highlight ─────────────────────────────
-    const layers = [];
+      const geo = await geocode(address);
+      if(!geo){ if(i<allIncidents.length-1) await sleep(1100); continue; }
 
-    if (affectedStreets.length > 0) {
-      setMapStatus(`🔍 Dibujando ${affectedStreets.length} calle(s) afectada(s)…`);
+      const lat=parseFloat(geo.lat), lon=parseFloat(geo.lon);
+      geocodedCount++;
 
-      // Accent colors cycle for multiple streets
-      const COLORS = ["#ef4444","#f59e0b","#8b5cf6","#06b6d4","#10b981"];
-      let found = 0;
+      // ── Draw affected streets for this incident ──────────────────────
+      const streets = data.affected_streets||[];
+      const streetLayers = [];
+      const cityCtx = address.split(",").slice(-2).join(",").trim();
+      const COLORS  = ["#ef4444","#f59e0b","#8b5cf6","#06b6d4","#10b981"];
 
-      for (let i = 0; i < affectedStreets.length; i++) {
-        const street = affectedStreets[i].trim();
-        if (!street) continue;
-
-        // Add city context for better results
-        const geo = await geocode(street, cityContext);
-
-        if (geo && geo.geojson) {
-          const color = COLORS[i % COLORS.length];
-          const gj    = geo.geojson;
-
-          // Draw the GeoJSON geometry (LineString or Polygon from Nominatim)
-          const layer = L.geoJSON(gj, {
-            style: {
-              color:       color,
-              weight:      6,
-              opacity:     0.85,
-              fillColor:   color,
-              fillOpacity: 0.25,
-              lineCap:     "round",
-              lineJoin:    "round"
-            }
+      for(let j=0; j<streets.length; j++){
+        const street = streets[j].trim();
+        if(!street) continue;
+        await sleep(1100);
+        setStatus(`<i class="fas fa-spinner fa-spin"></i> Dibujando calle: ${street}…`);
+        const sgeo = await geocode(street, cityCtx);
+        if(sgeo?.geojson){
+          const c = isCurrent ? COLORS[j%COLORS.length] : "#9ca3af";
+          const w = isCurrent ? 6 : 3;
+          const op= isCurrent ? .85 : .45;
+          const layer = L.geoJSON(sgeo.geojson,{
+            style:{color:c,weight:w,opacity:op,fillColor:c,fillOpacity:isCurrent?.2:.1,
+                   lineCap:"round",lineJoin:"round",
+                   dashArray:isCurrent?null:"4 4"}
           }).addTo(leafletMap);
-
-          layer.bindTooltip(`<strong>${street}</strong>`, {
-            permanent: false,
-            direction: "top",
-            className: "street-tooltip"
-          });
-
-          layers.push(layer);
-          found++;
-
-          // Small delay to respect Nominatim rate limit (1 req/s)
-          if (i < affectedStreets.length - 1) await sleep(1100);
-
-        } else if (geo) {
-          // Nominatim found location but no geometry — add a marker instead
-          const color = COLORS[i % COLORS.length];
-          const mk = L.circleMarker([parseFloat(geo.lat), parseFloat(geo.lon)], {
-            radius: 10, color: color, fillColor: color, fillOpacity: 0.5, weight: 2
-          }).addTo(leafletMap);
-          mk.bindTooltip(`<strong>${street}</strong>`, {permanent:false});
-          layers.push(mk);
-          found++;
-          if (i < affectedStreets.length - 1) await sleep(1100);
+          layer.bindTooltip(`<strong>${street}</strong><br><small>${data.title}</small>`,{sticky:true});
+          streetLayers.push(layer);
+          allLayers.push(layer);
+        }else if(sgeo){
+          await sleep(1100);
         }
       }
 
-      if (found > 0) {
-        // Fit map to all street layers
-        const group = L.featureGroup(layers);
-        leafletMap.fitBounds(group.getBounds().pad(0.25));
-        setMapStatus(`✅ ${found} de ${affectedStreets.length} calle(s) dibujada(s) en el mapa.`, "success");
-      } else {
-        // Streets not found — fall back to address point
-        drawAddressPin(centerLat, centerLon, address, data);
-        setMapStatus("⚠️ No se encontraron las calles exactas. Mostrando ubicación general.", "warning");
-      }
+      // ── Pin marker ──────────────────────────────────────────────────
+      const pinIcon = makePinIcon(data.category, isCurrent);
+      const marker  = L.marker([lat,lon],{icon:pinIcon, zIndexOffset: isCurrent?1000:0}).addTo(leafletMap);
 
-    } else {
-      // No streets — draw main address with radius zone
-      drawAddressPin(centerLat, centerLon, address, data);
+      // Tooltip on hover (always visible label for current)
+      marker.bindTooltip(
+        `<strong>${data.title}</strong>${isCurrent?" <span style='color:#b45309'>(esta alerta)</span>":""}`,
+        { permanent: isCurrent, direction:"top", offset:[0,-28],
+          className:"", opacity:1 }
+      );
 
-      // If bounding box is available, draw a soft zone polygon
-      if (mainGeo.boundingbox) {
-        const bb = mainGeo.boundingbox.map(parseFloat);
-        // bb = [minlat, maxlat, minlon, maxlon]
-        const bounds = [[bb[0], bb[2]], [bb[1], bb[3]]];
-        L.rectangle(bounds, {
-          color: "#f59e0b", weight: 2, opacity: 0.6,
-          fillColor: "#f59e0b", fillOpacity: 0.1,
-          dashArray: "6 4"
-        }).addTo(leafletMap);
-      }
+      // Popup on click
+      marker.bindPopup(makePopup(id, data, isCurrent),{maxWidth:260});
 
-      leafletMap.setView([centerLat, centerLon], 16);
-      setMapStatus("📍 Mostrando ubicación general de la alerta.", "success");
+      // Open current incident popup automatically
+      if(isCurrent){ marker.openPopup(); }
+
+      allLayers.push(marker);
+
+      // Rate limit between geocode requests
+      if(i < allIncidents.length-1) await sleep(1100);
     }
+
+    // ── Fit map to all layers ──────────────────────────────────────────
+    if(allLayers.length > 0){
+      try{
+        const group=L.featureGroup(allLayers);
+        leafletMap.fitBounds(group.getBounds().pad(0.25),{maxZoom:17});
+      }catch(e){
+        const geo=await geocode(currentData.location?.address||"");
+        if(geo) leafletMap.setView([parseFloat(geo.lat),parseFloat(geo.lon)],15);
+        else    leafletMap.setView([40.416775,-3.70379],6);
+      }
+    } else {
+      leafletMap.setView([40.416775,-3.70379],6);
+    }
+
+    // ── Update counter and status ──────────────────────────────────────
+    document.getElementById("incidentCounter").textContent =
+      `${geocodedCount} incidencia${geocodedCount!==1?"s":""} en el mapa`;
+
+    if(geocodedCount===0)
+      setStatus("⚠️ No se pudieron localizar las direcciones.","warning");
+    else if(geocodedCount < total)
+      setStatus(`✅ ${geocodedCount} de ${total} incidencia(s) mostradas. Algunas direcciones no se encontraron.`,"success");
+    else
+      setStatus(`✅ ${geocodedCount} incidencia${geocodedCount!==1?"s":""} cargada${geocodedCount!==1?"s":""} en el mapa.`,"success");
   }
 
-  function drawAddressPin(lat, lon, address, data) {
-    // Custom amber pin
-    const icon = L.divIcon({
-      className: "",
-      html: `<div style="
-        background:#f59e0b;color:#fff;width:36px;height:36px;
-        border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-        display:flex;align-items:center;justify-content:center;
-        box-shadow:0 2px 8px rgba(0,0,0,0.3);border:3px solid #fff;">
-        <i class="fas fa-map-marker-alt" style="transform:rotate(45deg);font-size:.9rem;"></i>
-      </div>`,
-      iconSize: [36, 36],
-      iconAnchor: [18, 36],
-      popupAnchor: [0, -36]
-    });
-    const marker = L.marker([lat, lon], { icon }).addTo(leafletMap);
-    marker.bindPopup(`<strong>${data.title}</strong><br><small>${address}</small>`).openPopup();
-  }
+  // ── Load everything ───────────────────────────────────────────────────
+  async function loadDetail(){
+    const id=getId();
+    if(!id){ showError("No se ha especificado ninguna alerta."); return; }
 
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-  // ── Main loader ───────────────────────────────────────────────────────
-  async function loadDetail() {
-    const id = getId();
-    if (!id) { showError("No se ha especificado ninguna alerta."); return; }
-
-    try {
-      const snap = await getDoc(doc(db, "incidents", id));
-      if (!snap.exists()) { showError("Esta alerta no existe o ha sido eliminada."); return; }
-
+    try{
+      // Load current incident
+      const snap = await getDoc(doc(db,"incidents",id));
+      if(!snap.exists()){ showError("Esta alerta no existe o ha sido eliminada."); return; }
       const data = snap.data();
 
-      // Duration
-      let duration = null;
-      if (data.start_date && data.end_date)
-        duration = calcDuration(data.start_date.toDate(), data.end_date.toDate());
+      // Load all active+planned incidents for same municipality
+      const allSnap = await getDocs(query(
+        collection(db,"incidents"),
+        where("municipalityId","==",data.municipalityId),
+        where("visibility","==","public")
+      ));
 
-      const mapsQuery   = encodeURIComponent(data.location?.address || "");
+      // Build incidents list: current first, then others
+      const others = [];
+      allSnap.forEach(d=>{
+        if(d.id!==id && ["ongoing","planned"].includes(d.data().status))
+          others.push({id:d.id, data:d.data()});
+      });
+      // Current incident goes first so it's always processed
+      const allIncidents = [{id, data}, ...others];
+
+      // ── Render card HTML ─────────────────────────────────────────────
+      const duration    = data.start_date&&data.end_date
+        ? calcDuration(data.start_date.toDate(),data.end_date.toDate()) : null;
+      const mapsQuery   = encodeURIComponent(data.location?.address||"");
       const mapsUrl     = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-      const affectedStreets = data.affected_streets || [];
-      const stColor     = stColors[data.status] || stColors.planned;
+      const streets     = data.affected_streets||[];
+      const stColor     = stColors[data.status]||stColors.planned;
 
-      // Streets tags HTML
-      const streetsHtml = affectedStreets.length > 0 ? `
+      const streetsHtml = streets.length>0?`
         <div class="streets-section">
           <div class="streets-title">Calles afectadas</div>
           <div class="streets-tags">
-            ${affectedStreets.map(s => `
-              <span class="street-tag"><i class="fas fa-map-pin"></i> ${s}</span>
-            `).join("")}
+            ${streets.map(s=>`<span class="street-tag"><i class="fas fa-map-pin"></i> ${s}</span>`).join("")}
           </div>
-        </div>` : "";
+        </div>`:"";
 
-      const publishedDate = data.created_at ? data.created_at.toDate() : new Date();
-      const publishedText = `Publicado el ${publishedDate.toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
+      const pubDate = data.created_at?data.created_at.toDate():new Date();
+      const pubText = `Publicado el ${pubDate.toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
 
-      // Legend items
-      const legendHtml = affectedStreets.length > 0
-        ? `<div class="legend-item"><span class="legend-line street"></span> Calle afectada</div>`
-        : `<div class="legend-item"><span class="legend-dot-pin"></span> Ubicación</div>
-           <div class="legend-item"><span class="legend-line zone"></span> Zona aproximada</div>`;
+      const otherCount = others.length;
+      const mapSubtitle = otherCount>0
+        ? `Esta alerta + ${otherCount} más activa${otherCount!==1?"s":""} del municipio`
+        : "Solo esta alerta (no hay otras activas)";
 
-      // Render HTML
-      document.getElementById("mainContent").innerHTML = `
+      document.getElementById("mainContent").innerHTML=`
 
-        <!-- Detail card -->
         <article class="detail-card">
           <div class="badges-row">
             <span class="category-badge ${data.category}">
@@ -423,26 +484,21 @@
               ${catLabels[data.category]||data.category}
             </span>
             <span class="status-badge" style="background:${stColor.bg};color:${stColor.text}">
-              <span class="dot"></span>
-              ${stLabels[data.status]||data.status}
+              <span class="dot"></span>${stLabels[data.status]||data.status}
             </span>
           </div>
-
           <h1 class="detail-title">${data.title}</h1>
-
           <p class="detail-muni">
             <i class="fas fa-landmark"></i>
-            ${data.municipalityName||"Ayuntamiento"}${data.region ? " — "+data.region : ""}
+            ${data.municipalityName||"Ayuntamiento"}${data.region?" — "+data.region:""}
           </p>
-
           <p class="detail-description">${data.description||"Sin descripción disponible."}</p>
-
           <div class="info-grid">
             <div class="info-block">
               <div class="info-block-title">Período</div>
               <div class="info-row"><i class="fas fa-calendar-plus"></i><span>Inicio: <strong>${formatDate(data.start_date)}</strong></span></div>
-              <div class="info-row"><i class="fas fa-calendar-minus"></i><span>Fin: <strong>${data.end_date ? formatDate(data.end_date) : "Sin fecha fin"}</strong></span></div>
-              ${duration ? `<div class="info-row"><i class="fas fa-clock"></i><span>Duración: <strong>${duration}</strong></span></div>` : ""}
+              <div class="info-row"><i class="fas fa-calendar-minus"></i><span>Fin: <strong>${data.end_date?formatDate(data.end_date):"Sin fecha fin"}</strong></span></div>
+              ${duration?`<div class="info-row"><i class="fas fa-clock"></i><span>Duración: <strong>${duration}</strong></span></div>`:""}
             </div>
             <div class="info-block">
               <div class="info-block-title">Ubicación</div>
@@ -453,26 +509,37 @@
               </div>
             </div>
           </div>
-
           ${streetsHtml}
-
-          <p class="published-date">${publishedText}</p>
+          <p class="published-date">${pubText}</p>
         </article>
 
-        <!-- Map card -->
         <section class="map-card">
           <div class="map-header">
             <div class="map-header-left">
               <i class="fas fa-map"></i>
-              Zona afectada
+              Alertas activas en el mapa
+              <span style="font-size:.78rem;color:var(--text-muted);font-weight:400;">${mapSubtitle}</span>
             </div>
-            <div class="map-legend">${legendHtml}</div>
+            <div class="map-legend">
+              <div class="legend-item">
+                <span class="legend-dot current"></span> Esta alerta
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot other"></span> Otras activas
+              </div>
+              <div class="legend-item">
+                <span class="legend-line-swatch" style="background:#ef4444"></span> Calle afectada
+              </div>
+            </div>
           </div>
           <div class="map-status" id="mapStatus">
-            <i class="fas fa-spinner fa-spin"></i> Cargando mapa…
+            <i class="fas fa-spinner fa-spin"></i> Iniciando mapa…
           </div>
           <div id="leafletMap"></div>
           <div class="map-footer">
+            <span class="incident-counter" id="incidentCounter">
+              <i class="fas fa-map-marker-alt"></i> Cargando…
+            </span>
             <a href="${mapsUrl}" target="_blank" rel="noopener" class="open-maps-btn">
               <i class="fas fa-external-link-alt"></i> Abrir en Google Maps
             </a>
@@ -480,25 +547,25 @@
         </section>
       `;
 
-      // Breadcrumb
-      document.getElementById("breadcrumbMuni").innerHTML = `<a href="/ayuntamientos/index.html">${data.municipalityName||"Ayuntamiento"}</a>`;
-      document.getElementById("breadcrumbTitle").textContent = data.title;
-      document.title = `${data.title} — Alertas Municipales`;
+      // Breadcrumb + title
+      document.getElementById("breadcrumbMuni").innerHTML=`<a href="/ayuntamientos/index.html">${data.municipalityName||"Ayuntamiento"}</a>`;
+      document.getElementById("breadcrumbTitle").textContent=data.title;
+      document.title=`${data.title} — Alertas Municipales`;
 
-      // Build Leaflet map (after DOM is ready)
-      await buildMap(data);
+      // Build map
+      await buildMap(id, data, allIncidents);
 
-    } catch (err) {
-      console.error("loadDetail:", err);
+    }catch(err){
+      console.error("loadDetail:",err);
       showError("Error al cargar la alerta. Inténtalo de nuevo.");
     }
   }
 
-  function showError(message) {
-    document.getElementById("mainContent").innerHTML = `
+  function showError(msg){
+    document.getElementById("mainContent").innerHTML=`
       <div class="error-detail">
         <i class="fas fa-exclamation-circle"></i>
-        <p>${message}</p><br>
+        <p>${msg}</p><br>
         <a href="/ayuntamientos/index.html">← Volver al listado</a>
       </div>`;
   }
