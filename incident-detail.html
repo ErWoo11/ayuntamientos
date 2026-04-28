@@ -333,8 +333,18 @@
         });
       }
 
-      console.info(`[overpass] "${streetName}": found ${features.length} way segment(s)`);
-      return features.length ? { type:"FeatureCollection", features } : null;
+      // Post-filter: discard any way whose midpoint falls outside the bbox
+      // This prevents streets from neighbouring towns with the same name
+      const [south, west, north, east] = bbox;
+      const inBbox = features.filter(f => {
+        const coords = f.geometry.coordinates;
+        const mid    = coords[Math.floor(coords.length / 2)];
+        return mid[1] >= south && mid[1] <= north &&
+               mid[0] >= west  && mid[0] <= east;
+      });
+
+      console.info(`[overpass] "${streetName}": ${features.length} found, ${inBbox.length} within bbox`);
+      return inBbox.length ? { type:"FeatureCollection", features: inBbox } : null;
     }catch(e){ console.warn("overpassStreetByName:",e); return null; }
   }
 
@@ -387,17 +397,18 @@
     return { geojson, centerLat, centerLon, nom };
   }
 
-  // ── Get city bounding box from Nominatim result ───────────────────────
-  // Returns [south, west, north, east] expanded slightly, or null
-  function expandBbox(nominatimResult, padDeg=0.02){
-    const bb = nominatimResult?.boundingbox;
-    if(!bb) return null;
-    // Nominatim returns [minlat, maxlat, minlon, maxlon]
+  // ── Build a tight bbox from a lat/lon point + radius in meters ──────
+  // This guarantees the search stays within the municipality, regardless
+  // of what Nominatim returns as its own bounding box.
+  // 1 degree latitude ≈ 111,320 m. Longitude degrees shrink with cos(lat).
+  function bboxFromPoint(lat, lon, radiusMeters = 1500){
+    const dLat = radiusMeters / 111320;
+    const dLon = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
     return [
-      parseFloat(bb[0]) - padDeg,
-      parseFloat(bb[2]) - padDeg,
-      parseFloat(bb[1]) + padDeg,
-      parseFloat(bb[3]) + padDeg
+      lat - dLat,   // south
+      lon - dLon,   // west
+      lat + dLat,   // north
+      lon + dLon    // east
     ];
   }
 
@@ -489,7 +500,8 @@
 
       const lat      = parseFloat(mainNom.lat);
       const lon      = parseFloat(mainNom.lon);
-      const cityBbox = expandBbox(mainNom, 0.03); // expand bbox ~3km around address
+      // Build bbox from the exact geocoded point, radius 1.5km — stays within the municipality
+      const cityBbox = bboxFromPoint(lat, lon, 1500);
       // City context = last 1-2 parts of address (e.g. "Sevilla, España" → "Sevilla")
       const cityCtx  = address.split(",").slice(-2).join(",").trim();
 
