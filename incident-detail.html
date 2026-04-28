@@ -157,7 +157,7 @@
 <body>
 
   <nav class="top-nav">
-    <a href="/ayuntamientos/index.html" class="logo">
+    <a href="index.html" class="logo">
       <i class="fas fa-bell"></i>
       <span>Alertas Municipales</span>
     </a>
@@ -165,7 +165,7 @@
   </nav>
 
   <nav class="breadcrumb" id="breadcrumb">
-    <a href="/ayuntamientos/index.html">Inicio</a>
+    <a href="index.html">Inicio</a>
     <span class="separator">›</span>
     <span id="breadcrumbMuni">Ayuntamiento</span>
     <span class="separator">›</span>
@@ -247,15 +247,136 @@
   }
   function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-  // ── Nominatim ─────────────────────────────────────────────────────────
-  async function geocode(q, city=""){
-    const qs=encodeURIComponent(city?q+", "+city:q);
-    const url=`https://nominatim.openstreetmap.org/search?q=${qs}&format=json&limit=1&polygon_geojson=1&addressdetails=1`;
+  // ── Nominatim: find OSM id + basic coords ────────────────────────────
+  // Returns { lat, lon, osm_type, osm_id, geojson, boundingbox } or null
+  async function nominatim(q, city=""){
+    const qs = encodeURIComponent(city ? q+", "+city : q);
+    const url = `https://nominatim.openstreetmap.org/search?q=${qs}`+
+                `&format=json&limit=3&polygon_geojson=1&addressdetails=1`;
     try{
-      const r=await fetch(url,{headers:{"Accept-Language":"es"}});
-      const d=await r.json();
-      return d.length?d[0]:null;
-    }catch(e){ console.warn("geocode:",e); return null; }
+      const r = await fetch(url, {
+        headers:{ "Accept-Language":"es", "User-Agent":"AlertasMunicipales/1.0" }
+      });
+      const data = await r.json();
+      if(!data.length) return null;
+      // Prefer results that are roads/streets (highway)
+      const road = data.find(d => d.class === "highway" || d.type === "road"
+                                || d.type === "residential" || d.type === "tertiary"
+                                || d.type === "secondary"   || d.type === "primary"
+                                || d.type === "service"     || d.type === "path"
+                                || d.type === "pedestrian"  || d.type === "footway");
+      return road || data[0];
+    }catch(e){ console.warn("nominatim:",e); return null; }
+  }
+
+  // ── Overpass: fetch full way geometry by OSM way id ──────────────────
+  // Returns a GeoJSON LineString/MultiLineString or null
+  async function overpassWay(osmId){
+    // Query: get all ways named after the street and their full node geometry
+    const query = `[out:json][timeout:10];way(${osmId});out geom;`;
+    const url   = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+    try{
+      const r    = await fetch(url, { headers:{ "User-Agent":"AlertasMunicipales/1.0" } });
+      const data = await r.json();
+      if(!data.elements?.length) return null;
+
+      // Convert Overpass way geometry to GeoJSON LineString
+      const way = data.elements[0];
+      if(!way.geometry?.length) return null;
+
+      return {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: way.geometry.map(n => [n.lon, n.lat])
+        }
+      };
+    }catch(e){ console.warn("overpassWay:",e); return null; }
+  }
+
+  // ── Overpass: search street by name within a bounding box ────────────
+  // Returns GeoJSON FeatureCollection with all matching ways
+  async function overpassStreetByName(streetName, bbox){
+    // bbox = [south, west, north, east]
+    const bb  = bbox.join(",");
+    // Search for all ways with this name in the bounding box
+    const q   = `[out:json][timeout:15];`+
+                `way["name"~"${streetName.replace(/"/g,"")}",i](${bb});`+
+                `out geom;`;
+    const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
+    try{
+      const r    = await fetch(url, { headers:{ "User-Agent":"AlertasMunicipales/1.0" } });
+      const data = await r.json();
+      if(!data.elements?.length) return null;
+
+      // Build a GeoJSON FeatureCollection from all matching ways
+      const features = data.elements
+        .filter(w => w.geometry?.length > 1)
+        .map(w => ({
+          type: "Feature",
+          properties: { name: w.tags?.name || streetName, osmId: w.id },
+          geometry: {
+            type: "LineString",
+            coordinates: w.geometry.map(n => [n.lon, n.lat])
+          }
+        }));
+
+      return features.length ? { type:"FeatureCollection", features } : null;
+    }catch(e){ console.warn("overpassStreetByName:",e); return null; }
+  }
+
+  // ── Main street resolver ──────────────────────────────────────────────
+  // Strategy:
+  //   1. Nominatim → if osm_type=way → Overpass way by id (exact geometry)
+  //   2. Nominatim found location → Overpass search by name in bbox (full street)
+  //   3. Nominatim only found a point → use point + small circle as fallback
+  async function resolveStreet(streetName, cityContext, cityBbox){
+    // Step 1 – Nominatim lookup
+    const nom = await nominatim(streetName, cityContext);
+
+    let geojson = null;
+    let centerLat = null, centerLon = null;
+
+    if(nom){
+      centerLat = parseFloat(nom.lat);
+      centerLon = parseFloat(nom.lon);
+
+      if(nom.osm_type === "way" && nom.osm_id){
+        // Step 1a – We have the exact OSM way id → fetch full geometry
+        await sleep(600); // Overpass rate limit
+        const wayGeo = await overpassWay(nom.osm_id);
+        if(wayGeo) geojson = wayGeo;
+      }
+    }
+
+    // Step 2 – Overpass name search in city bbox (catches multi-segment streets)
+    if(!geojson && cityBbox){
+      await sleep(600);
+      const fc = await overpassStreetByName(streetName, cityBbox);
+      if(fc) geojson = fc;
+    }
+
+    // Step 3 – Nominatim geojson fallback (may be a Point, LineString or Polygon)
+    if(!geojson && nom?.geojson){
+      // Only use if it's not a bare Point — a Point means Nominatim gave up
+      if(nom.geojson.type !== "Point") geojson = nom.geojson;
+    }
+
+    return { geojson, centerLat, centerLon, nom };
+  }
+
+  // ── Get city bounding box from Nominatim result ───────────────────────
+  // Returns [south, west, north, east] expanded slightly, or null
+  function expandBbox(nominatimResult, padDeg=0.02){
+    const bb = nominatimResult?.boundingbox;
+    if(!bb) return null;
+    // Nominatim returns [minlat, maxlat, minlon, maxlon]
+    return [
+      parseFloat(bb[0]) - padDeg,
+      parseFloat(bb[2]) - padDeg,
+      parseFloat(bb[1]) + padDeg,
+      parseFloat(bb[3]) + padDeg
+    ];
   }
 
   // ── Build category pin icon ───────────────────────────────────────────
@@ -304,7 +425,7 @@
         </div>
         <div class="inc-popup-title">${d.title}</div>
         ${addr?`<div class="inc-popup-addr"><i class="fas fa-map-marker-alt"></i>${addr}</div>`:""}
-        ${!isCurrent?`<a href="/ayuntamientos/incident-detail.html?id=${incId}" class="inc-popup-link">
+        ${!isCurrent?`<a href="incident-detail.html?id=${incId}" class="inc-popup-link">
           Ver detalle <i class="fas fa-arrow-right"></i></a>`:""}
       </div>`;
   }
@@ -320,14 +441,14 @@
       maxZoom:19
     }).addTo(leafletMap);
 
-    // Pulse animation style
     const styleEl = document.createElement("style");
     styleEl.textContent=`@keyframes pulseRing{0%{transform:scale(.9);opacity:.6}70%{transform:scale(1.3);opacity:0}100%{transform:scale(1.3);opacity:0}}`;
     document.head.appendChild(styleEl);
 
-    const allLayers = [];  // for fitBounds
+    const allLayers  = [];
     let geocodedCount = 0;
-    const total = allIncidents.length;
+    const total       = allIncidents.length;
+    const COLORS      = ["#ef4444","#f59e0b","#8b5cf6","#06b6d4","#10b981"];
 
     setStatus(`<i class="fas fa-spinner fa-spin"></i> Cargando ${total} incidencia(s) en el mapa…`);
 
@@ -335,67 +456,100 @@
     for(let i=0; i<allIncidents.length; i++){
       const {id, data} = allIncidents[i];
       const isCurrent  = id === currentId;
-      const address    = data.location?.address||"";
+      const address    = data.location?.address || "";
       if(!address) continue;
 
-      setStatus(`<i class="fas fa-spinner fa-spin"></i> Geocodificando ${i+1}/${total}: ${data.title.substring(0,40)}…`);
+      setStatus(`<i class="fas fa-spinner fa-spin"></i> Geocodificando (${i+1}/${total}): ${data.title.substring(0,40)}…`);
 
-      const geo = await geocode(address);
-      if(!geo){ if(i<allIncidents.length-1) await sleep(1100); continue; }
+      // ── Step 1: Geocode main address to get city bbox ────────────────
+      const mainNom = await nominatim(address);
+      if(!mainNom){ await sleep(1200); continue; }
 
-      const lat=parseFloat(geo.lat), lon=parseFloat(geo.lon);
+      const lat      = parseFloat(mainNom.lat);
+      const lon      = parseFloat(mainNom.lon);
+      const cityBbox = expandBbox(mainNom, 0.03); // expand bbox ~3km around address
+      // City context = last 1-2 parts of address (e.g. "Sevilla, España" → "Sevilla")
+      const cityCtx  = address.split(",").slice(-2).join(",").trim();
+
       geocodedCount++;
 
-      // ── Draw affected streets for this incident ──────────────────────
-      const streets = data.affected_streets||[];
-      const streetLayers = [];
-      const cityCtx = address.split(",").slice(-2).join(",").trim();
-      const COLORS  = ["#ef4444","#f59e0b","#8b5cf6","#06b6d4","#10b981"];
+      // ── Step 2: Draw each affected street ────────────────────────────
+      const streets     = data.affected_streets || [];
+      let   streetFound = false;
 
       for(let j=0; j<streets.length; j++){
-        const street = streets[j].trim();
-        if(!street) continue;
-        await sleep(1100);
-        setStatus(`<i class="fas fa-spinner fa-spin"></i> Dibujando calle: ${street}…`);
-        const sgeo = await geocode(street, cityCtx);
-        if(sgeo?.geojson){
-          const c = isCurrent ? COLORS[j%COLORS.length] : "#9ca3af";
-          const w = isCurrent ? 6 : 3;
-          const op= isCurrent ? .85 : .45;
-          const layer = L.geoJSON(sgeo.geojson,{
-            style:{color:c,weight:w,opacity:op,fillColor:c,fillOpacity:isCurrent?.2:.1,
-                   lineCap:"round",lineJoin:"round",
-                   dashArray:isCurrent?null:"4 4"}
+        const streetName = streets[j].trim();
+        if(!streetName) continue;
+
+        setStatus(`<i class="fas fa-spinner fa-spin"></i> Buscando calle ${j+1}/${streets.length}: <strong>${streetName}</strong>…`);
+
+        await sleep(1200); // Respect Nominatim 1 req/s + Overpass
+
+        const resolved = await resolveStreet(streetName, cityCtx, cityBbox);
+
+        if(resolved.geojson){
+          const c  = isCurrent ? COLORS[j % COLORS.length] : "#94a3b8";
+          const w  = isCurrent ? 7 : 3;
+          const op = isCurrent ? 0.9 : 0.5;
+
+          const layer = L.geoJSON(resolved.geojson, {
+            style: {
+              color:       c,
+              weight:      w,
+              opacity:     op,
+              fillColor:   c,
+              fillOpacity: isCurrent ? 0.15 : 0.05,
+              lineCap:     "round",
+              lineJoin:    "round",
+              dashArray:   isCurrent ? null : "5 5"
+            },
+            // Handle both Feature and FeatureCollection
+            onEachFeature: (feature, layer) => {
+              layer.bindTooltip(
+                `<strong>${streetName}</strong><br><small>${data.title}</small>`,
+                { sticky:true, direction:"top" }
+              );
+            }
           }).addTo(leafletMap);
-          layer.bindTooltip(`<strong>${street}</strong><br><small>${data.title}</small>`,{sticky:true});
-          streetLayers.push(layer);
+
           allLayers.push(layer);
-        }else if(sgeo){
-          await sleep(1100);
+          streetFound = true;
+
+        } else if(resolved.centerLat){
+          // Fallback: Nominatim found a point but no geometry → small circle
+          const c = isCurrent ? COLORS[j % COLORS.length] : "#94a3b8";
+          const circle = L.circle([resolved.centerLat, resolved.centerLon], {
+            radius: 80, color: c, fillColor: c,
+            fillOpacity: isCurrent ? 0.3 : 0.15, weight: isCurrent ? 4 : 2,
+            dashArray: isCurrent ? null : "4 4"
+          }).addTo(leafletMap);
+          circle.bindTooltip(
+            `<strong>${streetName}</strong><br><small>Ubicación aproximada</small>`,
+            { sticky:true }
+          );
+          allLayers.push(circle);
+          streetFound = true;
         }
-      }
+      } // end streets loop
 
-      // ── Pin marker ──────────────────────────────────────────────────
+      // ── Step 3: Pin marker ───────────────────────────────────────────
       const pinIcon = makePinIcon(data.category, isCurrent);
-      const marker  = L.marker([lat,lon],{icon:pinIcon, zIndexOffset: isCurrent?1000:0}).addTo(leafletMap);
+      const marker  = L.marker([lat, lon], {
+        icon: pinIcon,
+        zIndexOffset: isCurrent ? 1000 : 0
+      }).addTo(leafletMap);
 
-      // Tooltip on hover (always visible label for current)
       marker.bindTooltip(
-        `<strong>${data.title}</strong>${isCurrent?" <span style='color:#b45309'>(esta alerta)</span>":""}`,
-        { permanent: isCurrent, direction:"top", offset:[0,-28],
-          className:"", opacity:1 }
+        `<strong>${data.title}</strong>${isCurrent ? " <span style='color:#b45309'>(esta alerta)</span>" : ""}`,
+        { permanent: isCurrent, direction:"top", offset:[0,-28], opacity:1 }
       );
-
-      // Popup on click
-      marker.bindPopup(makePopup(id, data, isCurrent),{maxWidth:260});
-
-      // Open current incident popup automatically
-      if(isCurrent){ marker.openPopup(); }
+      marker.bindPopup(makePopup(id, data, isCurrent), { maxWidth:260 });
+      if(isCurrent) marker.openPopup();
 
       allLayers.push(marker);
 
-      // Rate limit between geocode requests
-      if(i < allIncidents.length-1) await sleep(1100);
+      // Rate limit between incidents
+      if(i < allIncidents.length - 1) await sleep(1200);
     }
 
     // ── Fit map to all layers ──────────────────────────────────────────
@@ -404,9 +558,9 @@
         const group=L.featureGroup(allLayers);
         leafletMap.fitBounds(group.getBounds().pad(0.25),{maxZoom:17});
       }catch(e){
-        const geo=await geocode(currentData.location?.address||"");
-        if(geo) leafletMap.setView([parseFloat(geo.lat),parseFloat(geo.lon)],15);
-        else    leafletMap.setView([40.416775,-3.70379],6);
+        const fb=await nominatim(currentData.location?.address||"");
+        if(fb) leafletMap.setView([parseFloat(fb.lat),parseFloat(fb.lon)],15);
+        else   leafletMap.setView([40.416775,-3.70379],6);
       }
     } else {
       leafletMap.setView([40.416775,-3.70379],6);
@@ -548,7 +702,7 @@
       `;
 
       // Breadcrumb + title
-      document.getElementById("breadcrumbMuni").innerHTML=`<a href="/ayuntamientos/index.html">${data.municipalityName||"Ayuntamiento"}</a>`;
+      document.getElementById("breadcrumbMuni").innerHTML=`<a href="index.html">${data.municipalityName||"Ayuntamiento"}</a>`;
       document.getElementById("breadcrumbTitle").textContent=data.title;
       document.title=`${data.title} — Alertas Municipales`;
 
@@ -566,7 +720,7 @@
       <div class="error-detail">
         <i class="fas fa-exclamation-circle"></i>
         <p>${msg}</p><br>
-        <a href="/ayuntamientos/index.html">← Volver al listado</a>
+        <a href="index.html">← Volver al listado</a>
       </div>`;
   }
 
