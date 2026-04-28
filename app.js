@@ -47,15 +47,23 @@ const statusLabels = {
 function computeStatus(data) {
   if (data.status === "cancelled") return "cancelled";
 
-  const now   = Date.now();
-  const start = data.start_date?.toDate().getTime() ?? null;
-  const end   = data.end_date?.toDate().getTime()   ?? null;
+  const nowMs = Date.now();
+  let startMs = null, endMs = null;
 
-  if (!start) return data.status; // no dates → trust stored value
+  if (data.start_date) {
+    const d = data.start_date.toDate();
+    startMs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
+  }
+  if (data.end_date) {
+    const d = data.end_date.toDate();
+    endMs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
+  }
 
-  if (now < start)                        return "planned";
-  if (end && now > end)                   return "completed";
-  if (now >= start && (!end || now <= end)) return "ongoing";
+  if (!startMs) return data.status;
+
+  if (nowMs < startMs)                            return "planned";
+  if (endMs && nowMs > endMs)                     return "completed";
+  if (nowMs >= startMs && (!endMs || nowMs <= endMs)) return "ongoing";
 
   return data.status;
 }
@@ -244,7 +252,7 @@ document.getElementById("sortBtn").addEventListener("click", () => {
   sortOrder = sortOrder === "desc" ? "asc" : "desc";
   document.getElementById("sortBtn").innerHTML =
     `<i class="fas fa-arrow-${sortOrder === "desc" ? "down" : "up"}"></i> ${sortOrder === "desc" ? "Más reciente" : "Más antiguo"}`;
-  applyFilters();
+  applyFilters(); // applyFilters already calls updateClearBtn
 });
 
 // ── Filters ───────────────────────────────────────────────────────────────
@@ -254,6 +262,7 @@ function applyFilters() {
     category:     document.getElementById("catSelect").value     || null,
     status:       document.getElementById("statusSelect").value  || null,
   };
+  updateClearBtn();
   loadIncidents(true);
 }
 
@@ -272,7 +281,42 @@ document.getElementById("searchInput").addEventListener("input", e => {
   });
   document.getElementById("resultsCount").textContent =
     `${visible} alerta${visible !== 1 ? "s" : ""} encontrada${visible !== 1 ? "s" : ""}`;
+  updateClearBtn();
 });
+
+// ── Clear filters ─────────────────────────────────────────────────────────
+function hasActiveFilters() {
+  return document.getElementById("muniSelect").value    !== "" ||
+         document.getElementById("catSelect").value     !== "" ||
+         document.getElementById("statusSelect").value  !== "" ||
+         document.getElementById("searchInput").value   !== "" ||
+         sortOrder !== "desc";
+}
+
+function updateClearBtn() {
+  const btn = document.getElementById("clearFiltersBtn");
+  if (!btn) return;
+  btn.classList.toggle("visible", hasActiveFilters());
+}
+
+function clearFilters() {
+  document.getElementById("muniSelect").value    = "";
+  document.getElementById("catSelect").value     = "";
+  document.getElementById("statusSelect").value  = "";
+  document.getElementById("searchInput").value   = "";
+  // Reset sort to default
+  if (sortOrder !== "desc") {
+    sortOrder = "desc";
+    document.getElementById("sortBtn").innerHTML =
+      `<i class="fas fa-arrow-down"></i> Más reciente`;
+  }
+  // Show all hidden cards (search may have hidden some)
+  document.querySelectorAll(".incident-card").forEach(c => c.style.display = "");
+  updateClearBtn();
+  applyFilters();
+}
+
+document.getElementById("clearFiltersBtn")?.addEventListener("click", clearFilters);
 
 document.getElementById("loadMore").addEventListener("click", () => loadIncidents(false));
 

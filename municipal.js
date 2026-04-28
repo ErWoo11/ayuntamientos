@@ -46,15 +46,31 @@ const statusLabels = {
 function computeStatus(incident) {
   if (incident.status === "cancelled") return "cancelled";
 
-  const now   = Date.now();
-  const start = incident.start_date?.toDate().getTime() ?? null;
-  const end   = incident.end_date?.toDate().getTime()   ?? null;
+  // Use start of day (00:00:00) and end of day (23:59:59) in local time
+  // so that an event created "today" is immediately "ongoing", not "completed".
+  const nowMs = Date.now();
 
-  if (!start) return incident.status;
+  let startMs = null, endMs = null;
 
-  if (now < start)                          return "planned";
-  if (end && now > end)                     return "completed";
-  if (now >= start && (!end || now <= end)) return "ongoing";
+  if (incident.start_date) {
+    const d = incident.start_date.toDate();
+    // Floor to start of local day: 00:00:00.000
+    const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    startMs = startOfDay.getTime();
+  }
+
+  if (incident.end_date) {
+    const d = incident.end_date.toDate();
+    // Ceil to end of local day: 23:59:59.999
+    const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    endMs = endOfDay.getTime();
+  }
+
+  if (!startMs) return incident.status; // no dates → trust stored value
+
+  if (nowMs < startMs)                          return "planned";
+  if (endMs && nowMs > endMs)                   return "completed";
+  if (nowMs >= startMs && (!endMs || nowMs <= endMs)) return "ongoing";
 
   return incident.status;
 }
@@ -305,15 +321,25 @@ document.getElementById("alertForm")?.addEventListener("submit", async e => {
     const endVal   = document.getElementById("alertEnd").value;
 
     // Compute the correct status from the dates being saved
-    const startDate = startVal ? new Date(startVal) : null;
-    const endDate   = endVal   ? new Date(endVal)   : null;
-    const now       = Date.now();
+    // Parse dates as LOCAL midnight / end-of-day to avoid UTC offset issues.
+    // new Date("2025-04-28") → UTC midnight → in Spain (UTC+2) = 22:00 prev day → bug.
+    // new Date(2025, 3, 28, 0,0,0) → local midnight → correct.
+    let startDate = null, endDate = null;
+    if (startVal) {
+      const [sy, sm, sd] = startVal.split("-").map(Number);
+      startDate = new Date(sy, sm - 1, sd, 0, 0, 0, 0); // local 00:00:00
+    }
+    if (endVal) {
+      const [ey, em, ed] = endVal.split("-").map(Number);
+      endDate = new Date(ey, em - 1, ed, 23, 59, 59, 999); // local 23:59:59
+    }
+    const now = Date.now();
 
     let autoStatus = document.getElementById("alertStatus").value;
     // Only auto-compute if not manually cancelled
     if (autoStatus !== "cancelled" && startDate) {
-      if (now < startDate.getTime())                                autoStatus = "planned";
-      else if (endDate && now > endDate.getTime())                  autoStatus = "completed";
+      if (now < startDate.getTime())                                  autoStatus = "planned";
+      else if (endDate && now > endDate.getTime())                    autoStatus = "completed";
       else if (now >= startDate.getTime() && (!endDate || now <= endDate.getTime())) autoStatus = "ongoing";
     }
 

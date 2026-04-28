@@ -83,7 +83,10 @@
     .filter-row { display: flex; gap: 1rem; flex-wrap: wrap; }
     .filter-select { padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 10px; font-size: 0.9rem; background: #fff; min-width: 190px; cursor: pointer; flex: 1; }
     .filter-select:focus { outline: none; border-color: var(--primary); }
-    .results-count { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.75rem; }
+    .results-count { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.75rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+    .clear-btn { display: none; align-items: center; gap: .35rem; font-size: .8rem; color: var(--primary); background: none; border: none; cursor: pointer; font-weight: 500; padding: .2rem .5rem; border-radius: 6px; transition: background .15s; }
+    .clear-btn:hover { background: #eff6ff; }
+    .clear-btn.visible { display: inline-flex; }
 
     /* ── Cards Grid ── */
     .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; }
@@ -216,7 +219,12 @@
           <option value="cancelled">Cancelado</option>
         </select>
       </div>
-      <p class="results-count" id="resultsCount">Cargando alertas…</p>
+      <div class="results-count">
+        <span id="resultsCount">Cargando alertas…</span>
+        <button class="clear-btn" id="clearFiltersBtn">
+          <i class="fas fa-times-circle"></i> Limpiar filtros
+        </button>
+      </div>
     </section>
 
     <div id="incidentsList" class="cards-grid"></div>
