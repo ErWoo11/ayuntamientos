@@ -298,70 +298,92 @@
   // Returns GeoJSON FeatureCollection with all matching ways
   async function overpassStreetByName(streetName, bbox){
     // bbox = [south, west, north, east]
-    const bb  = bbox.join(",");
-    // Search for all ways with this name in the bounding box
-    const q   = `[out:json][timeout:15];`+
-                `way["name"~"${streetName.replace(/"/g,"")}",i](${bb});`+
-                `out geom;`;
+    const bb      = bbox.join(",");
+    const safeName = streetName.replace(/"/g, "");
+
+    // Try exact name match first, then regex fallback for partial names
+    // Using union: exact "name"=value OR regex "name"~ for robustness
+    const q = `[out:json][timeout:20];`+
+              `(`+
+              `  way["name"="${safeName}"](${bb});`+
+              `  way["name"~"^${safeName}$",i](${bb});`+
+              `);`+
+              `out geom;`;
+
     const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
     try{
       const r    = await fetch(url, { headers:{ "User-Agent":"AlertasMunicipales/1.0" } });
       const data = await r.json();
       if(!data.elements?.length) return null;
 
-      // Build a GeoJSON FeatureCollection from all matching ways
-      const features = data.elements
-        .filter(w => w.geometry?.length > 1)
-        .map(w => ({
+      // Deduplicate by osm id (union query may return duplicates)
+      const seen    = new Set();
+      const features = [];
+      for(const w of data.elements){
+        if(!w.geometry?.length || w.geometry.length < 2) continue;
+        if(seen.has(w.id)) continue;
+        seen.add(w.id);
+        features.push({
           type: "Feature",
           properties: { name: w.tags?.name || streetName, osmId: w.id },
           geometry: {
             type: "LineString",
             coordinates: w.geometry.map(n => [n.lon, n.lat])
           }
-        }));
+        });
+      }
 
+      console.info(`[overpass] "${streetName}": found ${features.length} way segment(s)`);
       return features.length ? { type:"FeatureCollection", features } : null;
     }catch(e){ console.warn("overpassStreetByName:",e); return null; }
   }
 
   // ── Main street resolver ──────────────────────────────────────────────
-  // Strategy:
-  //   1. Nominatim → if osm_type=way → Overpass way by id (exact geometry)
-  //   2. Nominatim found location → Overpass search by name in bbox (full street)
-  //   3. Nominatim only found a point → use point + small circle as fallback
+  // Strategy (in order of completeness):
+  //   1. Overpass by name in bbox → ALL segments of the street  ← PRIMARY
+  //   2. Nominatim osm_id → Overpass single way                 ← fallback when no bbox
+  //   3. Nominatim geojson (LineString/Polygon only)            ← last resort
+  //   4. Point + circle if nothing else worked                  ← visual fallback
   async function resolveStreet(streetName, cityContext, cityBbox){
-    // Step 1 – Nominatim lookup
-    const nom = await nominatim(streetName, cityContext);
-
-    let geojson = null;
+    let geojson   = null;
     let centerLat = null, centerLon = null;
+    let nom       = null;
 
-    if(nom){
-      centerLat = parseFloat(nom.lat);
-      centerLon = parseFloat(nom.lon);
-
-      if(nom.osm_type === "way" && nom.osm_id){
-        // Step 1a – We have the exact OSM way id → fetch full geometry
-        await sleep(600); // Overpass rate limit
-        const wayGeo = await overpassWay(nom.osm_id);
-        if(wayGeo) geojson = wayGeo;
+    // ── Step 1: Overpass by name — ALWAYS try this first ──────────────
+    // This is the only method that reliably returns ALL way segments
+    // (streets in OSM are split at every junction, traffic light, etc.)
+    if(cityBbox){
+      const fc = await overpassStreetByName(streetName, cityBbox);
+      if(fc){
+        geojson = fc;
+        // Derive center from first coordinate of first feature
+        const firstCoord = fc.features[0]?.geometry?.coordinates[0];
+        if(firstCoord){ centerLon = firstCoord[0]; centerLat = firstCoord[1]; }
       }
     }
 
-    // Step 2 – Overpass name search in city bbox (catches multi-segment streets)
-    if(!geojson && cityBbox){
+    // ── Step 2: Nominatim lookup (needed for center coords + fallbacks) ─
+    if(!geojson || !centerLat){
+      nom = await nominatim(streetName, cityContext);
+      if(nom){
+        centerLat = parseFloat(nom.lat);
+        centerLon = parseFloat(nom.lon);
+      }
+    }
+
+    // ── Step 3: Overpass single way by osm_id (no bbox available) ──────
+    if(!geojson && nom?.osm_type === "way" && nom?.osm_id){
       await sleep(600);
-      const fc = await overpassStreetByName(streetName, cityBbox);
-      if(fc) geojson = fc;
+      const wayGeo = await overpassWay(nom.osm_id);
+      if(wayGeo) geojson = wayGeo;
     }
 
-    // Step 3 – Nominatim geojson fallback (may be a Point, LineString or Polygon)
-    if(!geojson && nom?.geojson){
-      // Only use if it's not a bare Point — a Point means Nominatim gave up
-      if(nom.geojson.type !== "Point") geojson = nom.geojson;
+    // ── Step 4: Nominatim geojson (LineString or Polygon, never Point) ──
+    if(!geojson && nom?.geojson && nom.geojson.type !== "Point"){
+      geojson = nom.geojson;
     }
 
+    // centerLat/centerLon may still be null if everything failed
     return { geojson, centerLat, centerLon, nom };
   }
 
@@ -483,14 +505,21 @@
 
         setStatus(`<i class="fas fa-spinner fa-spin"></i> Buscando calle ${j+1}/${streets.length}: <strong>${streetName}</strong>…`);
 
-        await sleep(1200); // Respect Nominatim 1 req/s + Overpass
+        // Small pause between streets to respect API rate limits
+        if(j > 0) await sleep(800);
 
         const resolved = await resolveStreet(streetName, cityCtx, cityBbox);
 
         if(resolved.geojson){
           const c  = isCurrent ? COLORS[j % COLORS.length] : "#94a3b8";
-          const w  = isCurrent ? 7 : 3;
-          const op = isCurrent ? 0.9 : 0.5;
+          const w  = isCurrent ? 8 : 4;
+          const op = isCurrent ? 0.95 : 0.55;
+
+          // Count segments for status message
+          const segCount = resolved.geojson.type === "FeatureCollection"
+            ? resolved.geojson.features.length : 1;
+          if(isCurrent)
+            setStatus(`<i class="fas fa-check-circle"></i> "${streetName}" — ${segCount} segmento(s) dibujado(s)`);
 
           const layer = L.geoJSON(resolved.geojson, {
             style: {
@@ -503,9 +532,8 @@
               lineJoin:    "round",
               dashArray:   isCurrent ? null : "5 5"
             },
-            // Handle both Feature and FeatureCollection
-            onEachFeature: (feature, layer) => {
-              layer.bindTooltip(
+            onEachFeature: (_feature, fLayer) => {
+              fLayer.bindTooltip(
                 `<strong>${streetName}</strong><br><small>${data.title}</small>`,
                 { sticky:true, direction:"top" }
               );
