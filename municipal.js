@@ -1,11 +1,10 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp }    from "firebase/app";
 import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
-import {
-  getFirestore, doc, getDoc, collection, query, where, orderBy,
-  addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp, Timestamp
-} from "firebase/firestore";
+import { getFirestore, doc, getDoc, collection, query,
+         where, orderBy, addDoc, updateDoc, deleteDoc,
+         getDocs, serverTimestamp, Timestamp, writeBatch }
+                             from "firebase/firestore";
 
-// ── Firebase config ────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyBzidosSZRxKmjMIrg0zAjYRt_rbohcHLU",
   authDomain: "saas-45027.firebaseapp.com",
@@ -20,38 +19,81 @@ const auth = getAuth(app);
 const db   = getFirestore(app);
 
 // ── State ──────────────────────────────────────────────────────────────────
-let currentUser  = null;
-let userMuniId   = null;
-let userMuniName = null;
-let incidents    = [];
+let currentUser   = null;
+let userMuniId    = null;
+let userMuniName  = null;
+let incidents     = [];
 let currentFilter = "all";
 
 // ── Label maps ────────────────────────────────────────────────────────────
 const catLabels = {
-  street_closure: "Corte de calle",
-  parking_ban:    "Prohibición aparcamiento",
-  utility_cut:    "Corte suministros",
-  roadwork:       "Obras",
-  event:          "Evento",
-  other:          "Otro"
+  street_closure:"Corte de calle", parking_ban:"Prohibición aparcamiento",
+  utility_cut:"Corte suministros", roadwork:"Obras",
+  event:"Evento",                  other:"Otro"
 };
 const catIcons = {
-  street_closure: "fa-road",
-  parking_ban:    "fa-parking",
-  utility_cut:    "fa-bolt",
-  roadwork:       "fa-helmet-safety",
-  event:          "fa-calendar-check",
-  other:          "fa-circle-info"
+  street_closure:"fa-road",    parking_ban:"fa-parking",
+  utility_cut:"fa-bolt",       roadwork:"fa-helmet-safety",
+  event:"fa-calendar-check",   other:"fa-circle-info"
 };
 const statusLabels = {
-  planned:   "Próxima",
-  ongoing:   "Activa",
-  completed: "Finalizada",
-  cancelled: "Cancelada"
+  planned:"Próxima", ongoing:"Activa",
+  completed:"Finalizada", cancelled:"Cancelada"
 };
 
+// ── Auto-calculate status from dates ──────────────────────────────────────
+// "cancelled" is never overridden — it was explicitly set by the user.
+function computeStatus(incident) {
+  if (incident.status === "cancelled") return "cancelled";
+
+  const now   = Date.now();
+  const start = incident.start_date?.toDate().getTime() ?? null;
+  const end   = incident.end_date?.toDate().getTime()   ?? null;
+
+  if (!start) return incident.status;
+
+  if (now < start)                          return "planned";
+  if (end && now > end)                     return "completed";
+  if (now >= start && (!end || now <= end)) return "ongoing";
+
+  return incident.status;
+}
+
+// ── Sync status to Firestore for outdated docs ────────────────────────────
+// Runs silently after loading — updates any incidents whose stored status
+// no longer matches the computed status (e.g. planned → ongoing overnight).
+async function syncStatuses(incidentList) {
+  const toUpdate = incidentList.filter(i => {
+    if (i.status === "cancelled") return false;
+    return computeStatus(i) !== i.status;
+  });
+
+  if (toUpdate.length === 0) return;
+
+  // Batch write (max 500 per batch, more than enough here)
+  const batch = writeBatch(db);
+  toUpdate.forEach(i => {
+    batch.update(doc(db, "incidents", i.id), {
+      status:     computeStatus(i),
+      updated_at: serverTimestamp()
+    });
+  });
+
+  try {
+    await batch.commit();
+    console.info(`[syncStatuses] Updated ${toUpdate.length} incident(s) status.`);
+    // Update local array too so UI is consistent without re-fetching
+    toUpdate.forEach(i => { i.status = computeStatus(i); });
+    updateStats();
+    renderTable();
+  } catch (e) {
+    // Non-critical — just log, don't disrupt UX
+    console.warn("[syncStatuses] Batch update failed:", e);
+  }
+}
+
 // ── Auth listener ─────────────────────────────────────────────────────────
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async user => {
   if (user) {
     currentUser = user;
     await loadUserProfile();
@@ -60,10 +102,11 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-// ── Load user profile ─────────────────────────────────────────────────────
+// ── Load user profile ──────────────────────────────────────────────────────
 async function loadUserProfile() {
   try {
     const snap = await getDoc(doc(db, "users", currentUser.uid));
+
     if (!snap.exists() || snap.data().role !== "municipal") {
       await signOut(auth);
       window.location.href = "/ayuntamientos/index.html";
@@ -72,7 +115,6 @@ async function loadUserProfile() {
 
     const userData = snap.data();
 
-    // Check municipality is active
     if (userData.status === "inactive") {
       await signOut(auth);
       window.location.href = "/ayuntamientos/index.html";
@@ -81,54 +123,67 @@ async function loadUserProfile() {
 
     userMuniId = userData.municipality_id;
 
+    // Check municipality is still active
     const muniSnap = await getDoc(doc(db, "municipalities", userMuniId));
-    userMuniName   = muniSnap.exists() ? muniSnap.data().name : "Mi Ayuntamiento";
+    if (!muniSnap.exists() || muniSnap.data().status !== "active") {
+      await signOut(auth);
+      window.location.href = "/ayuntamientos/index.html";
+      return;
+    }
+
+    userMuniName = muniSnap.data().name;
 
     document.getElementById("userMuniDisplay").innerHTML = `<i class="fas fa-landmark"></i> ${userMuniName}`;
     document.getElementById("muniSubtitle").textContent  = userMuniName;
 
-    loadIncidents();
+    await loadIncidents();
   } catch (e) {
-    console.error("Error cargando perfil:", e);
+    console.error("loadUserProfile:", e);
   }
 }
 
-// ── Load incidents ────────────────────────────────────────────────────────
+// ── Load incidents ─────────────────────────────────────────────────────────
 async function loadIncidents() {
   try {
-    const q    = query(
+    const snap = await getDocs(query(
       collection(db, "incidents"),
       where("municipalityId", "==", userMuniId),
       orderBy("created_at", "desc")
-    );
-    const snap = await getDocs(q);
-    incidents  = [];
+    ));
+
+    incidents = [];
     snap.forEach(d => incidents.push({ id: d.id, ...d.data() }));
 
     updateStats();
     renderTable();
+
+    // After rendering, silently sync any outdated statuses in Firestore
+    syncStatuses(incidents);
+
   } catch (e) {
-    console.error("Error cargando incidencias:", e);
+    console.error("loadIncidents:", e);
     showTableError("Error al cargar las alertas.");
   }
 }
 
-// ── Stats ─────────────────────────────────────────────────────────────────
+// ── Stats (use computed status) ────────────────────────────────────────────
 function updateStats() {
+  const computed = incidents.map(i => computeStatus(i));
   document.getElementById("statTotal").textContent     = incidents.length;
-  document.getElementById("statActive").textContent    = incidents.filter(i => i.status === "ongoing").length;
-  document.getElementById("statPlanned").textContent   = incidents.filter(i => i.status === "planned").length;
-  document.getElementById("statCompleted").textContent = incidents.filter(i => i.status === "completed").length;
+  document.getElementById("statActive").textContent    = computed.filter(s => s === "ongoing").length;
+  document.getElementById("statPlanned").textContent   = computed.filter(s => s === "planned").length;
+  document.getElementById("statCompleted").textContent = computed.filter(s => s === "completed").length;
 }
 
-// ── Render table ──────────────────────────────────────────────────────────
+// ── Render table ───────────────────────────────────────────────────────────
 function renderTable() {
   const tbody  = document.getElementById("incidentsTableBody");
   tbody.innerHTML = "";
 
   const search   = document.getElementById("searchInput").value.toLowerCase();
   const filtered = incidents.filter(i => {
-    const matchFilter = currentFilter === "all" || i.status === currentFilter;
+    const realStatus  = computeStatus(i);
+    const matchFilter = currentFilter === "all" || realStatus === currentFilter;
     const matchSearch = i.title.toLowerCase().includes(search) ||
                         (i.location?.address || "").toLowerCase().includes(search);
     return matchFilter && matchSearch;
@@ -136,28 +191,28 @@ function renderTable() {
 
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2.5rem;color:#9ca3af;">
-      <i class="fas fa-bell-slash" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>
+      <i class="fas fa-bell-slash" style="font-size:1.5rem;display:block;margin-bottom:.5rem;"></i>
       No hay alertas${currentFilter !== "all" ? " con este filtro" : ""}
     </td></tr>`;
     document.getElementById("tableFooter").textContent = "Mostrando 0 alertas";
     return;
   }
 
+  const catClassMap = {
+    street_closure:"badge-cat-closure", parking_ban:"badge-cat-parking",
+    utility_cut:"badge-cat-utility",    roadwork:"badge-cat-roadwork",
+    event:"badge-cat-event",            other:"badge-cat-other"
+  };
+
   filtered.forEach(i => {
+    // Always show the computed status in the UI
+    const realStatus = computeStatus(i);
+    const hasStatusChanged = realStatus !== i.status;
+
     const dateStart = i.start_date ? i.start_date.toDate().toLocaleDateString("es-ES") : "Sin fecha";
     const dateEnd   = i.end_date   ? i.end_date.toDate().toLocaleDateString("es-ES")   : "";
     const dateStr   = dateEnd ? `${dateStart} → ${dateEnd}` : dateStart;
     const location  = i.location?.address || "Sin ubicación";
-
-    // Map category class names to badge classes
-    const catClassMap = {
-      street_closure: "badge-cat-closure",
-      parking_ban:    "badge-cat-parking",
-      utility_cut:    "badge-cat-utility",
-      roadwork:       "badge-cat-roadwork",
-      event:          "badge-cat-event",
-      other:          "badge-cat-other"
-    };
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -172,12 +227,17 @@ function renderTable() {
         </span>
       </td>
       <td>
-        <span class="badge badge-status ${i.status}">
+        <span class="badge badge-status ${realStatus}">
           <span class="dot"></span>
-          ${statusLabels[i.status] || i.status}
+          ${statusLabels[realStatus] || realStatus}
         </span>
+        ${hasStatusChanged ? `
+          <span title="Actualización pendiente de sincronización"
+                style="font-size:.7rem;color:#9ca3af;margin-left:.3rem;">
+            <i class="fas fa-sync-alt fa-spin"></i>
+          </span>` : ""}
       </td>
-      <td style="color:var(--text-muted);font-size:0.85rem;">${dateStr}</td>
+      <td style="color:var(--text-muted);font-size:.85rem;">${dateStr}</td>
       <td style="text-align:right;">
         <div class="actions">
           <button class="action-btn edit"   data-id="${i.id}" title="Editar">
@@ -201,93 +261,98 @@ function showTableError(msg) {
     `<tr><td colspan="5" style="text-align:center;padding:2rem;color:#ef4444;">${msg}</td></tr>`;
 }
 
-// ── Char counter ──────────────────────────────────────────────────────────
-const descTextarea = document.getElementById("alertDesc");
-if (descTextarea) {
-  descTextarea.addEventListener("input", function () {
+// ── Char counter ───────────────────────────────────────────────────────────
+const descTA = document.getElementById("alertDesc");
+if (descTA) {
+  descTA.addEventListener("input", function () {
     document.getElementById("charCounter").textContent = `${this.value.length}/500`;
   });
 }
 
-// ── Modal helpers ─────────────────────────────────────────────────────────
-function openModal() { document.getElementById("modal").classList.add("open"); }
+// ── Modal helpers ──────────────────────────────────────────────────────────
+function openModal()  { document.getElementById("modal").classList.add("open"); }
 function closeModal() { document.getElementById("modal").classList.remove("open"); }
 
-// New alert
-const newAlertBtn = document.getElementById("newAlertBtn");
-if (newAlertBtn) {
-  newAlertBtn.addEventListener("click", () => {
-    document.getElementById("alertForm").reset();
-    document.getElementById("alertId").value      = "";
-    document.getElementById("modalTitle").textContent = "Nueva alerta";
-    document.getElementById("charCounter").textContent = "0/500";
-    openModal();
-  });
-}
+document.getElementById("newAlertBtn")?.addEventListener("click", () => {
+  document.getElementById("alertForm").reset();
+  document.getElementById("alertId").value             = "";
+  document.getElementById("modalTitle").textContent    = "Nueva alerta";
+  document.getElementById("charCounter").textContent   = "0/500";
+  openModal();
+});
 
-// Close buttons
 document.getElementById("closeModal")?.addEventListener("click", closeModal);
 document.getElementById("cancelBtn")?.addEventListener("click",  closeModal);
-document.getElementById("modal")?.addEventListener("click", (e) => {
+document.getElementById("modal")?.addEventListener("click", e => {
   if (e.target === document.getElementById("modal")) closeModal();
 });
 
-// ── Save alert (create / edit) ────────────────────────────────────────────
-const alertForm = document.getElementById("alertForm");
-if (alertForm) {
-  alertForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const btn          = e.target.querySelector("button[type='submit']");
-    const originalHTML = btn.innerHTML;
-    btn.disabled  = true;
-    btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Guardando…";
+// ── Save alert ─────────────────────────────────────────────────────────────
+document.getElementById("alertForm")?.addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = e.target.querySelector("button[type='submit']");
+  const orig = btn.innerHTML;
+  btn.disabled  = true;
+  btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Guardando…";
 
-    try {
-      const streetsInput = document.getElementById("alertStreets").value.trim();
-      const streetsArray = streetsInput
-        ? streetsInput.split(",").map(s => s.trim()).filter(Boolean)
-        : [];
+  try {
+    const streetsInput = document.getElementById("alertStreets").value.trim();
+    const streetsArray = streetsInput
+      ? streetsInput.split(",").map(s => s.trim()).filter(Boolean)
+      : [];
 
-      const startVal = document.getElementById("alertStart").value;
-      const endVal   = document.getElementById("alertEnd").value;
+    const startVal = document.getElementById("alertStart").value;
+    const endVal   = document.getElementById("alertEnd").value;
 
-      const data = {
-        title:            document.getElementById("alertTitle").value.trim(),
-        description:      document.getElementById("alertDesc").value.trim(),
-        category:         document.getElementById("alertCategory").value,
-        status:           document.getElementById("alertStatus").value,
-        start_date:       Timestamp.fromDate(new Date(startVal)),
-        end_date:         endVal ? Timestamp.fromDate(new Date(endVal)) : null,
-        location:         { address: document.getElementById("alertLocation").value.trim() },
-        affected_streets: streetsArray,
-        municipalityId:   userMuniId,
-        municipalityName: userMuniName,
-        visibility:       "public",
-        updated_at:       serverTimestamp()
-      };
+    // Compute the correct status from the dates being saved
+    const startDate = startVal ? new Date(startVal) : null;
+    const endDate   = endVal   ? new Date(endVal)   : null;
+    const now       = Date.now();
 
-      const id = document.getElementById("alertId").value;
-      if (id) {
-        await updateDoc(doc(db, "incidents", id), data);
-      } else {
-        data.created_at = serverTimestamp();
-        data.created_by = currentUser.uid;
-        await addDoc(collection(db, "incidents"), data);
-      }
-
-      closeModal();
-      loadIncidents();
-    } catch (err) {
-      console.error("Error guardando alerta:", err);
-      alert("Error al guardar: " + err.message);
-    } finally {
-      btn.disabled  = false;
-      btn.innerHTML = originalHTML;
+    let autoStatus = document.getElementById("alertStatus").value;
+    // Only auto-compute if not manually cancelled
+    if (autoStatus !== "cancelled" && startDate) {
+      if (now < startDate.getTime())                                autoStatus = "planned";
+      else if (endDate && now > endDate.getTime())                  autoStatus = "completed";
+      else if (now >= startDate.getTime() && (!endDate || now <= endDate.getTime())) autoStatus = "ongoing";
     }
-  });
-}
 
-// ── Tabs (filter by status) ───────────────────────────────────────────────
+    const data = {
+      title:            document.getElementById("alertTitle").value.trim(),
+      description:      document.getElementById("alertDesc").value.trim(),
+      category:         document.getElementById("alertCategory").value,
+      status:           autoStatus,
+      start_date:       startDate ? Timestamp.fromDate(startDate) : null,
+      end_date:         endDate   ? Timestamp.fromDate(endDate)   : null,
+      location:         { address: document.getElementById("alertLocation").value.trim() },
+      affected_streets: streetsArray,
+      municipalityId:   userMuniId,
+      municipalityName: userMuniName,
+      visibility:       "public",
+      updated_at:       serverTimestamp()
+    };
+
+    const id = document.getElementById("alertId").value;
+    if (id) {
+      await updateDoc(doc(db, "incidents", id), data);
+    } else {
+      data.created_at = serverTimestamp();
+      data.created_by = currentUser.uid;
+      await addDoc(collection(db, "incidents"), data);
+    }
+
+    closeModal();
+    await loadIncidents();
+  } catch (err) {
+    console.error("saveAlert:", err);
+    alert("Error al guardar: " + err.message);
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = orig;
+  }
+});
+
+// ── Tabs ──────────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
@@ -300,41 +365,42 @@ document.querySelectorAll(".tab").forEach(btn => {
 // ── Search ────────────────────────────────────────────────────────────────
 document.getElementById("searchInput")?.addEventListener("input", renderTable);
 
-// ── Edit / Delete (event delegation) ─────────────────────────────────────
-document.getElementById("incidentsTableBody")?.addEventListener("click", async (e) => {
+// ── Edit / Delete ─────────────────────────────────────────────────────────
+document.getElementById("incidentsTableBody")?.addEventListener("click", async e => {
   const btn = e.target.closest("button");
   if (!btn) return;
 
-  const id     = btn.dataset.id;
-  const isEdit = btn.classList.contains("edit");
-  const isDel  = btn.classList.contains("delete");
+  const id    = btn.dataset.id;
+  const isEdit= btn.classList.contains("edit");
+  const isDel = btn.classList.contains("delete");
 
   if (isEdit) {
-    const incident = incidents.find(x => x.id === id);
-    if (!incident) return;
+    const inc = incidents.find(x => x.id === id);
+    if (!inc) return;
 
-    document.getElementById("alertId").value        = incident.id;
-    document.getElementById("alertTitle").value     = incident.title;
-    document.getElementById("alertDesc").value      = incident.description || "";
-    document.getElementById("charCounter").textContent = `${(incident.description || "").length}/500`;
-    document.getElementById("alertCategory").value  = incident.category;
-    document.getElementById("alertStatus").value    = incident.status;
-    document.getElementById("alertLocation").value  = incident.location?.address || "";
-    document.getElementById("alertStart").value     = incident.start_date
-      ? incident.start_date.toDate().toISOString().split("T")[0] : "";
-    document.getElementById("alertEnd").value       = incident.end_date
-      ? incident.end_date.toDate().toISOString().split("T")[0]   : "";
-    document.getElementById("alertStreets").value   = (incident.affected_streets || []).join(", ");
+    document.getElementById("alertId").value       = inc.id;
+    document.getElementById("alertTitle").value    = inc.title;
+    document.getElementById("alertDesc").value     = inc.description || "";
+    document.getElementById("charCounter").textContent = `${(inc.description||"").length}/500`;
+    document.getElementById("alertCategory").value = inc.category;
+    // Show the computed status in the edit form so user sees what it really is
+    document.getElementById("alertStatus").value   = computeStatus(inc);
+    document.getElementById("alertLocation").value = inc.location?.address || "";
+    document.getElementById("alertStart").value    = inc.start_date
+      ? inc.start_date.toDate().toISOString().split("T")[0] : "";
+    document.getElementById("alertEnd").value      = inc.end_date
+      ? inc.end_date.toDate().toISOString().split("T")[0]   : "";
+    document.getElementById("alertStreets").value  = (inc.affected_streets || []).join(", ");
     document.getElementById("modalTitle").textContent = "Editar alerta";
     openModal();
   }
 
   if (isDel) {
     if (!confirm("¿Seguro que quieres eliminar esta alerta? Esta acción no se puede deshacer.")) return;
+    btn.disabled = true;
     try {
-      btn.disabled = true;
       await deleteDoc(doc(db, "incidents", id));
-      loadIncidents();
+      await loadIncidents();
     } catch (err) {
       alert("Error al eliminar: " + err.message);
       btn.disabled = false;

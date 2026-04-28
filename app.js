@@ -1,11 +1,9 @@
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore, collection, query, where, orderBy, limit,
-  getDocs, startAfter, Timestamp
-} from "firebase/firestore";
+import { initializeApp }    from "firebase/app";
+import { getFirestore, collection, query, where, orderBy,
+         limit, getDocs, startAfter, Timestamp, doc, getDoc }
+                             from "firebase/firestore";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
-// ── Firebase config ────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyBzidosSZRxKmjMIrg0zAjYRt_rbohcHLU",
   authDomain: "saas-45027.firebaseapp.com",
@@ -22,47 +20,68 @@ const auth = getAuth(app);
 // ── State ──────────────────────────────────────────────────────────────────
 let lastDoc        = null;
 let currentFilters = {};
-let sortOrder      = "desc"; // "desc" | "asc"
+let sortOrder      = "desc";
 
-// ── Category / status maps ─────────────────────────────────────────────────
+// Set of active municipality IDs — only incidents from these are shown
+let activeMuniIds  = new Set();
+
+// ── Maps ───────────────────────────────────────────────────────────────────
 const catIcons = {
-  street_closure: "fa-road",
-  parking_ban:    "fa-square-parking",
-  utility_cut:    "fa-bolt",
-  roadwork:       "fa-helmet-safety",
-  event:          "fa-calendar-check",
-  other:          "fa-circle-info"
+  street_closure:"fa-road", parking_ban:"fa-square-parking",
+  utility_cut:"fa-bolt",    roadwork:"fa-helmet-safety",
+  event:"fa-calendar-check",other:"fa-circle-info"
 };
 const catLabels = {
-  street_closure: "Corte de calles",
-  parking_ban:    "Prohibición aparcamiento",
-  utility_cut:    "Corte suministros",
-  roadwork:       "Obras",
-  event:          "Eventos",
-  other:          "Otros"
+  street_closure:"Corte de calles", parking_ban:"Prohibición aparcamiento",
+  utility_cut:"Corte suministros",  roadwork:"Obras",
+  event:"Eventos",                  other:"Otros"
 };
 const statusLabels = {
-  planned:   "Planificado",
-  ongoing:   "En curso",
-  completed: "Finalizado",
-  cancelled: "Cancelado"
+  planned:"Planificado", ongoing:"En curso",
+  completed:"Finalizado", cancelled:"Cancelado"
 };
 
-// ── Load municipalities dropdown ───────────────────────────────────────────
+// ── Auto-calculate status from dates ──────────────────────────────────────
+// Returns the real status based on start/end dates regardless of what's stored.
+// "cancelled" is never overridden — it was explicitly set by the user.
+function computeStatus(data) {
+  if (data.status === "cancelled") return "cancelled";
+
+  const now   = Date.now();
+  const start = data.start_date?.toDate().getTime() ?? null;
+  const end   = data.end_date?.toDate().getTime()   ?? null;
+
+  if (!start) return data.status; // no dates → trust stored value
+
+  if (now < start)                        return "planned";
+  if (end && now > end)                   return "completed";
+  if (now >= start && (!end || now <= end)) return "ongoing";
+
+  return data.status;
+}
+
+// ── Load municipalities (active only) ─────────────────────────────────────
 async function loadMunicipalities() {
   try {
-    const snap   = await getDocs(query(collection(db, "municipalities"), where("status", "==", "active"), orderBy("name")));
-    const select = document.getElementById("muniSelect");
+    const snap = await getDocs(query(
+      collection(db, "municipalities"),
+      where("status", "==", "active"),
+      orderBy("name")
+    ));
+    const sel = document.getElementById("muniSelect");
+    activeMuniIds.clear();
+
     snap.forEach(d => {
-      const opt       = document.createElement("option");
-      opt.value       = d.id;
-      opt.textContent = d.data().name;
-      select.appendChild(opt);
+      activeMuniIds.add(d.id);
+      const o = document.createElement("option");
+      o.value = d.id;
+      o.textContent = d.data().name;
+      sel.appendChild(o);
     });
-    // Update hero stat
+
     document.getElementById("statMunis").textContent = snap.size;
   } catch (e) {
-    console.warn("Error cargando municipios:", e);
+    console.warn("loadMunicipalities:", e);
   }
 }
 
@@ -73,17 +92,11 @@ function buildQuery() {
   if (currentFilters.municipality)
     conds.push(where("municipalityId", "==", currentFilters.municipality));
 
-  if (currentFilters.status)
-    conds.push(where("status", "==", currentFilters.status));
-
-  if (currentFilters.dateFrom)
-    conds.push(where("start_date", ">=", Timestamp.fromDate(new Date(currentFilters.dateFrom))));
-
-  if (currentFilters.dateTo)
-    conds.push(where("start_date", "<=", Timestamp.fromDate(new Date(currentFilters.dateTo + "T23:59:59"))));
+  // Note: status filter is applied client-side after auto-calculation
+  // to avoid Firestore index requirements and to use computed status
 
   conds.push(orderBy("start_date", sortOrder));
-  conds.push(limit(20));
+  conds.push(limit(40)); // fetch more to compensate for client-side filtering
   if (lastDoc) conds.push(startAfter(lastDoc));
 
   return query(collection(db, "incidents"), ...conds);
@@ -91,11 +104,15 @@ function buildQuery() {
 
 // ── Render a single card ───────────────────────────────────────────────────
 function renderCard(id, data) {
+  const realStatus = computeStatus(data);
+
   const card = document.createElement("article");
   card.className = "incident-card";
+  card.dataset.status = realStatus;
+  card.dataset.category = data.category;
 
   const startStr = data.start_date?.toDate().toLocaleDateString("es-ES") ?? "—";
-  const endStr   = data.end_date   ? data.end_date.toDate().toLocaleDateString("es-ES") : null;
+  const endStr   = data.end_date ? data.end_date.toDate().toLocaleDateString("es-ES") : null;
 
   card.innerHTML = `
     <div class="card-header">
@@ -104,8 +121,8 @@ function renderCard(id, data) {
         ${catLabels[data.category] || data.category}
       </span>
       <span class="status-badge">
-        <span class="status-dot ${data.status}"></span>
-        ${statusLabels[data.status] || data.status}
+        <span class="status-dot ${realStatus}"></span>
+        ${statusLabels[realStatus] || realStatus}
       </span>
     </div>
     <h3 class="card-title">${data.title}</h3>
@@ -123,7 +140,6 @@ function renderCard(id, data) {
     </div>
   `;
 
-  // Click → detail page
   card.style.cursor = "pointer";
   card.addEventListener("click", () => {
     window.location.href = `/ayuntamientos/incident-detail.html?id=${id}`;
@@ -137,69 +153,93 @@ async function loadIncidents(reset = true) {
   if (reset) {
     lastDoc = null;
     document.getElementById("incidentsList").innerHTML =
-      "<p style='text-align:center;padding:3rem;color:var(--text-muted);'><i class='fas fa-spinner fa-spin' style='margin-right:0.5rem;'></i>Cargando...</p>";
+      "<p style='text-align:center;padding:3rem;color:var(--text-muted)'>" +
+      "<i class='fas fa-spinner fa-spin' style='margin-right:.5rem'></i>Cargando...</p>";
   }
 
   try {
-    const snap     = await getDocs(buildQuery());
+    const snap      = await getDocs(buildQuery());
     const container = document.getElementById("incidentsList");
 
-    if (reset) {
-      if (snap.empty) {
-        container.innerHTML = `
-          <div class="empty-state" style="grid-column:1/-1;">
-            <i class="fas fa-bell-slash"></i>
-            <p>No hay alertas para estos filtros.</p>
-          </div>`;
-        document.getElementById("resultsCount").textContent = "0 alertas encontradas";
-        document.getElementById("loadMore").classList.add("hidden");
-        updateHeroStatsFromDB();
-        return;
-      }
-      container.innerHTML = "";
+    if (reset) container.innerHTML = "";
+
+    if (reset && snap.empty) {
+      container.innerHTML = `
+        <div class="empty-state" style="grid-column:1/-1">
+          <i class="fas fa-bell-slash"></i>
+          <p>No hay alertas para estos filtros.</p>
+        </div>`;
+      document.getElementById("resultsCount").textContent = "0 alertas encontradas";
+      document.getElementById("loadMore").classList.add("hidden");
+      if (reset) updateHeroStatsFromDB();
+      return;
     }
 
     lastDoc = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
 
-    // Category filter (client-side, since Firestore can't combine it with orderBy without composite index)
-    const toRender = currentFilters.category
-      ? snap.docs.filter(d => d.data().category === currentFilters.category)
-      : snap.docs;
+    snap.docs.forEach(d => {
+      const data = d.data();
 
-    toRender.forEach(d => container.appendChild(renderCard(d.id, d.data())));
+      // ── FILTER 1: skip incidents from inactive municipalities ──────────
+      if (!activeMuniIds.has(data.municipalityId)) return;
 
-    // Results count
+      // ── FILTER 2: skip if filtered municipality selected but not matching
+      if (currentFilters.municipality && data.municipalityId !== currentFilters.municipality) return;
+
+      // ── FILTER 3: category (client-side) ─────────────────────────────
+      if (currentFilters.category && data.category !== currentFilters.category) return;
+
+      // ── FILTER 4: status — use computed status ────────────────────────
+      const realStatus = computeStatus(data);
+      if (currentFilters.status && realStatus !== currentFilters.status) return;
+
+      container.appendChild(renderCard(d.id, data));
+    });
+
     const totalShown = container.querySelectorAll(".incident-card").length;
-    document.getElementById("resultsCount").textContent = `${totalShown} alerta${totalShown !== 1 ? "s" : ""} encontrada${totalShown !== 1 ? "s" : ""}`;
+    document.getElementById("resultsCount").textContent =
+      `${totalShown} alerta${totalShown !== 1 ? "s" : ""} encontrada${totalShown !== 1 ? "s" : ""}`;
 
-    // Hero stats (only on first load / reset)
     if (reset) await updateHeroStatsFromDB();
 
-    // Load more button
-    document.getElementById("loadMore").classList.toggle("hidden", snap.docs.length < 20);
+    // Show load more only if we got a full page AND there might be more
+    document.getElementById("loadMore").classList.toggle("hidden", snap.docs.length < 40);
 
   } catch (err) {
-    console.error("Error cargando incidencias:", err);
+    console.error("loadIncidents:", err);
     document.getElementById("incidentsList").innerHTML =
-      "<p style='text-align:center;padding:2rem;color:#ef4444;'>Error al cargar las alertas. Recarga la página.</p>";
+      "<p style='text-align:center;padding:2rem;color:#ef4444'>Error al cargar las alertas. Recarga la página.</p>";
   }
 }
 
-// ── Hero stats ─────────────────────────────────────────────────────────────
+// ── Hero stats (computed from dates, not stored status) ───────────────────
 async function updateHeroStatsFromDB() {
   try {
-    const [activeSnap, plannedSnap] = await Promise.all([
-      getDocs(query(collection(db, "incidents"), where("visibility", "==", "public"), where("status", "==", "ongoing"),  limit(500))),
-      getDocs(query(collection(db, "incidents"), where("visibility", "==", "public"), where("status", "==", "planned"),  limit(500)))
-    ]);
-    document.getElementById("statActive").textContent  = activeSnap.size;
-    document.getElementById("statPlanned").textContent = plannedSnap.size;
+    // Fetch all public incidents and compute status client-side
+    const now = Timestamp.now();
+    const snap = await getDocs(query(
+      collection(db, "incidents"),
+      where("visibility", "==", "public"),
+      limit(1000)
+    ));
+
+    let active = 0, planned = 0;
+    snap.forEach(d => {
+      const data = d.data();
+      if (!activeMuniIds.has(data.municipalityId)) return; // skip inactive munis
+      const st = computeStatus(data);
+      if (st === "ongoing")  active++;
+      if (st === "planned")  planned++;
+    });
+
+    document.getElementById("statActive").textContent  = active;
+    document.getElementById("statPlanned").textContent = planned;
   } catch (e) {
-    console.warn("Error actualizando stats:", e);
+    console.warn("updateHeroStats:", e);
   }
 }
 
-// ── Sort button ────────────────────────────────────────────────────────────
+// ── Sort ──────────────────────────────────────────────────────────────────
 document.getElementById("sortBtn").addEventListener("click", () => {
   sortOrder = sortOrder === "desc" ? "asc" : "desc";
   document.getElementById("sortBtn").innerHTML =
@@ -207,7 +247,7 @@ document.getElementById("sortBtn").addEventListener("click", () => {
   applyFilters();
 });
 
-// ── Filters ────────────────────────────────────────────────────────────────
+// ── Filters ───────────────────────────────────────────────────────────────
 function applyFilters() {
   currentFilters = {
     municipality: document.getElementById("muniSelect").value    || null,
@@ -221,8 +261,7 @@ document.getElementById("muniSelect").addEventListener("change",   applyFilters)
 document.getElementById("catSelect").addEventListener("change",    applyFilters);
 document.getElementById("statusSelect").addEventListener("change", applyFilters);
 
-// Search (client-side filter on rendered cards)
-document.getElementById("searchInput").addEventListener("input", (e) => {
+document.getElementById("searchInput").addEventListener("input", e => {
   const term  = e.target.value.toLowerCase();
   const cards = document.querySelectorAll(".incident-card");
   let visible = 0;
@@ -235,40 +274,34 @@ document.getElementById("searchInput").addEventListener("input", (e) => {
     `${visible} alerta${visible !== 1 ? "s" : ""} encontrada${visible !== 1 ? "s" : ""}`;
 });
 
-// Load more
 document.getElementById("loadMore").addEventListener("click", () => loadIncidents(false));
 
-// ── Login modal ────────────────────────────────────────────────────────────
+// ── Login modal ───────────────────────────────────────────────────────────
+const lModal = document.getElementById("loginModal");
 document.getElementById("loginBtn").addEventListener("click", () => {
-  document.getElementById("loginModal").classList.add("open");
+  lModal.classList.add("open");
   document.getElementById("loginEmail").focus();
 });
-
 document.getElementById("closeLoginModal").addEventListener("click", () => {
-  document.getElementById("loginModal").classList.remove("open");
-  clearLoginError();
+  lModal.classList.remove("open"); clearErr();
+});
+lModal.addEventListener("click", e => {
+  if (e.target === lModal) { lModal.classList.remove("open"); clearErr(); }
 });
 
-document.getElementById("loginModal").addEventListener("click", (e) => {
-  if (e.target === document.getElementById("loginModal")) {
-    document.getElementById("loginModal").classList.remove("open");
-    clearLoginError();
-  }
-});
-
-document.getElementById("loginForm").addEventListener("submit", async (e) => {
+document.getElementById("loginForm").addEventListener("submit", async e => {
   e.preventDefault();
   const btn   = e.target.querySelector("button[type='submit']");
   const email = document.getElementById("loginEmail").value.trim();
   const pass  = document.getElementById("loginPassword").value;
 
-  btn.disabled   = true;
-  btn.innerHTML  = "<i class='fas fa-spinner fa-spin'></i> Accediendo...";
-  clearLoginError();
+  btn.disabled  = true;
+  btn.innerHTML = "<i class='fas fa-spinner fa-spin'></i> Accediendo…";
+  clearErr();
 
   try {
     const { login } = await import("./auth.js");
-    await login(email, pass); // redirects on success
+    await login(email, pass);
   } catch (err) {
     const msgs = {
       "auth/user-not-found":     "Email no encontrado.",
@@ -277,52 +310,40 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
       "auth/too-many-requests":  "Demasiados intentos. Inténtalo más tarde.",
       "auth/invalid-email":      "Email no válido."
     };
-    showLoginError(msgs[err.code] || err.message);
-  } finally {
+    showErr(msgs[err.code] || err.message);
     btn.disabled  = false;
     btn.innerHTML = "<i class='fas fa-sign-in-alt'></i> Acceder";
   }
 });
 
-function showLoginError(msg) {
-  const el = document.getElementById("loginError");
-  el.textContent = msg;
-  el.style.display = "block";
-}
-function clearLoginError() {
-  const el = document.getElementById("loginError");
-  el.textContent  = "";
-  el.style.display = "none";
-}
+function showErr(m) { const el = document.getElementById("loginError"); el.textContent = m; el.style.display = "block"; }
+function clearErr() { const el = document.getElementById("loginError"); el.textContent = ""; el.style.display = "none"; }
 
-// ── PWA install prompt ─────────────────────────────────────────────────────
-let deferredPrompt;
+// ── PWA ───────────────────────────────────────────────────────────────────
+let dp;
 window.addEventListener("beforeinstallprompt", e => {
-  e.preventDefault();
-  deferredPrompt = e;
+  e.preventDefault(); dp = e;
   const bar = document.getElementById("installBar");
   if (bar) bar.classList.remove("hidden");
 });
-
 const installBtn = document.getElementById("installBtn");
 if (installBtn) {
   installBtn.addEventListener("click", async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
+    if (!dp) return;
+    dp.prompt();
+    const { outcome } = await dp.userChoice;
     if (outcome === "accepted") {
       const bar = document.getElementById("installBar");
       if (bar) bar.classList.add("hidden");
     }
-    deferredPrompt = null;
+    dp = null;
   });
 }
 
-// ── Auth redirect if already logged in ────────────────────────────────────
+// ── Auth redirect if already logged in ───────────────────────────────────
 onAuthStateChanged(auth, user => {
   if (user) window.location.href = "/ayuntamientos/municipal.html";
 });
 
-// ── Init ───────────────────────────────────────────────────────────────────
-loadMunicipalities();
-loadIncidents(true);
+// ── Init ──────────────────────────────────────────────────────────────────
+loadMunicipalities().then(() => loadIncidents(true));
