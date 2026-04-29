@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#2563eb">
+  <title>Detalle de alerta - Alertas Municipales</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+
+  <style>
+    :root {
+      --bg:#fafafa; --card-bg:#fff; --text:#1a1a1a; --text-muted:#6b7280;
+      --text-light:#9ca3af; --border:#e5e7eb; --accent:#f59e0b;
+      --danger:#ef4444;
+      --badge-parking:#fef2f2;  --badge-parking-text:#be123c;
+      --badge-event:#ecfdf5;    --badge-event-text:#059669;
+      --badge-utility:#eff6ff;  --badge-utility-text:#1d4ed8;
+      --badge-roadwork:#fffbeb; --badge-roadwork-text:#b45309;
+      --badge-closure:#fef2f2;  --badge-closure-text:#dc2626;
+      --badge-other:#f3f4f6;    --badge-other-text:#374151;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    body{background:var(--bg);color:var(--text);line-height:1.6}
+
+    /* ── Nav ── */
+    .top-nav{background:#fff;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1000}
+    .logo{display:flex;align-items:center;gap:.75rem;font-weight:700;font-size:1.2rem;text-decoration:none;color:var(--text)}
+    .logo i{background:var(--text);color:#fff;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px}
+    .nav-subtitle{color:var(--text-muted);font-size:.85rem}
+
+    /* ── Breadcrumb ── */
+    .breadcrumb{max-width:800px;margin:1.5rem auto 0;padding:0 2rem;font-size:.85rem;color:var(--text-light);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    .breadcrumb a{color:var(--text-muted);text-decoration:none}
+    .breadcrumb a:hover{color:var(--accent)}
+    .breadcrumb .separator{color:var(--text-light)}
+    .breadcrumb .current{color:var(--text);font-weight:500}
+
+    /* ── Container ── */
+    .container{max-width:800px;margin:0 auto;padding:1.5rem 2rem 3rem}
+
+    /* ── Detail card ── */
+    .detail-card{background:var(--card-bg);border-radius:12px;border:1px solid var(--border);padding:2rem;position:relative;margin-bottom:1.5rem}
+    .detail-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--accent);border-radius:12px 12px 0 0}
+
+    /* ── Badges ── */
+    .badges-row{display:flex;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap}
+    .category-badge{padding:.4rem .85rem;border-radius:20px;font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:.4rem}
+    .category-badge.parking_ban   {background:var(--badge-parking); color:var(--badge-parking-text)}
+    .category-badge.event         {background:var(--badge-event);   color:var(--badge-event-text)}
+    .category-badge.utility_cut   {background:var(--badge-utility); color:var(--badge-utility-text)}
+    .category-badge.roadwork      {background:var(--badge-roadwork);color:var(--badge-roadwork-text)}
+    .category-badge.street_closure{background:var(--badge-closure); color:var(--badge-closure-text)}
+    .category-badge.other         {background:var(--badge-other);   color:var(--badge-other-text)}
+    .status-badge{padding:.4rem .85rem;border-radius:20px;font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:.4rem}
+    .status-badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
+
+    /* ── Typography ── */
+    .detail-title{font-size:1.5rem;font-weight:700;margin-bottom:1rem;line-height:1.3}
+    .detail-muni{font-size:.85rem;color:var(--text-muted);display:flex;align-items:center;gap:.4rem;margin-bottom:1.25rem}
+    .detail-description{font-size:1rem;color:#374151;line-height:1.7;margin-bottom:1.5rem}
+
+    /* ── Info grid ── */
+    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
+    .info-block{background:#fafafa;border-radius:10px;padding:1.25rem;border:1px solid var(--border)}
+    .info-block-title{font-size:.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem}
+    .info-row{display:flex;align-items:center;gap:.6rem;font-size:.9rem;margin-bottom:.5rem}
+    .info-row:last-child{margin-bottom:0}
+    .info-row i{color:var(--text-light);font-size:.85rem;width:18px;text-align:center}
+    .info-row strong{font-weight:600}
+    .info-row a{color:var(--accent);text-decoration:none;font-size:.85rem;display:flex;align-items:center;gap:.3rem}
+    .info-row a:hover{text-decoration:underline}
+
+    /* ── Affected streets ── */
+    .streets-section{margin-bottom:1.5rem}
+    .streets-title{font-size:.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem}
+    .streets-tags{display:flex;flex-wrap:wrap;gap:.5rem}
+    .street-tag{background:#f3f4f6;border:1px solid var(--border);border-radius:8px;padding:.5rem .85rem;font-size:.85rem;display:flex;align-items:center;gap:.4rem;cursor:pointer;transition:all .15s}
+    .street-tag:hover{background:#fef3c7;border-color:var(--accent)}
+    .street-tag i{color:var(--text-light);font-size:.75rem}
+
+    /* ── Published ── */
+    .published-date{font-size:.8rem;color:var(--text-light);padding-top:1rem;border-top:1px solid var(--border)}
+
+    /* ── Map card ── */
+    .map-card{background:var(--card-bg);border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:1.5rem}
+    .map-header{padding:1rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
+    .map-header-left{display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:.95rem}
+    .map-header i{color:var(--text-muted)}
+    .map-legend{display:flex;align-items:center;gap:.85rem;font-size:.78rem;color:var(--text-muted);flex-wrap:wrap}
+    .legend-item{display:flex;align-items:center;gap:.35rem}
+    .legend-dot{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1.5px currentColor;flex-shrink:0}
+    .legend-dot.current{background:#f59e0b;color:#f59e0b;width:16px;height:16px}
+    .legend-dot.other{background:#6b7280;color:#6b7280}
+    .legend-line-swatch{width:20px;height:4px;border-radius:2px;flex-shrink:0}
+
+    /* Map status bar */
+    .map-status{padding:.5rem 1.5rem;background:#f9fafb;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--text-muted);display:flex;align-items:center;gap:.5rem;min-height:32px;transition:all .3s}
+    .map-status.success{background:#ecfdf5;color:#059669}
+    .map-status.warning{background:#fffbeb;color:#b45309}
+    .map-status.error  {background:#fef2f2;color:#dc2626}
+
+    /* Map tabs */
+    .map-tabs{display:flex;gap:0;border-bottom:1px solid var(--border)}
+    .map-tab{flex:1;padding:.6rem 1rem;border:none;background:#f9fafb;cursor:pointer;font-size:.82rem;font-weight:500;color:var(--text-muted);border-right:1px solid var(--border);transition:all .15s}
+    .map-tab:last-child{border-right:none}
+    .map-tab.active{background:#fff;color:var(--text);border-bottom:2px solid var(--accent);margin-bottom:-1px}
+    .map-tab:hover:not(.active){background:#fff;color:var(--text)}
+
+    /* Leaflet map */
+    #leafletMap{width:100%;height:440px}
+
+    /* Map footer */
+    .map-footer{padding:.75rem 1.5rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem}
+    .incident-counter{font-size:.8rem;color:var(--text-muted);display:flex;align-items:center;gap:.4rem}
+    .open-maps-btn{display:inline-flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--accent);text-decoration:none;font-weight:500}
+    .open-maps-btn:hover{text-decoration:underline}
+
+    /* ── Custom Leaflet popup ── */
+    .leaflet-popup-content-wrapper{border-radius:10px!important;box-shadow:0 4px 16px rgba(0,0,0,.15)!important;border:1px solid var(--border)!important;padding:0!important}
+    .leaflet-popup-content{margin:0!important;min-width:180px}
+    .inc-popup{padding:.75rem 1rem}
+    .inc-popup-cat{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem;display:flex;align-items:center;gap:.3rem}
+    .inc-popup-title{font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:.25rem;line-height:1.3}
+    .inc-popup-addr{font-size:.78rem;color:var(--text-muted);margin-bottom:.5rem;display:flex;align-items:center;gap:.3rem}
+    .inc-popup-link{font-size:.78rem;color:var(--accent);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.25rem}
+    .inc-popup-link:hover{text-decoration:underline}
+    .inc-popup-current-badge{display:inline-flex;align-items:center;gap:.3rem;background:#fef3c7;color:#92400e;font-size:.72rem;font-weight:700;padding:.2rem .5rem;border-radius:12px;margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.04em}
+
+    /* ── Custom marker icons ── */
+    .map-pin{display:flex;align-items:center;justify-content:center;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);transition:transform .15s}
+    .map-pin:hover{transform:rotate(-45deg) scale(1.2)}
+    .map-pin i{transform:rotate(45deg)}
+    .map-pin.current-pin{box-shadow:0 0 0 4px rgba(245,158,11,.35),0 2px 8px rgba(0,0,0,.3)}
+
+    /* ── Loading / error states ── */
+    .loading-detail{text-align:center;padding:4rem 2rem;color:var(--text-muted)}
+    .loading-detail i{font-size:2rem;margin-bottom:1rem;display:block}
+    .error-detail{text-align:center;padding:4rem 2rem;color:var(--text-muted)}
+    .error-detail i{font-size:2rem;margin-bottom:1rem;display:block;color:var(--danger)}
+    .error-detail a{color:var(--accent);text-decoration:none}
+
+    @media(max-width:768px){
+      .top-nav{padding:1rem}
+      .breadcrumb{padding:0 1rem;margin-top:1rem}
+      .container{padding:1rem 1rem 2rem}
+      .detail-card{padding:1.5rem}
+      .info-grid{grid-template-columns:1fr}
+      .detail-title{font-size:1.25rem}
+      #leafletMap{height:320px}
+      .map-legend{display:none}
+      .nav-subtitle{display:none}
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="top-nav">
+    <a href="/ayuntamientos/index.html" class="logo">
+      <i class="fas fa-bell"></i>
+      <span>Alertas Municipales</span>
+    </a>
+    <span class="nav-subtitle">Información municipal centralizada</span>
+  </nav>
+
+  <nav class="breadcrumb" id="breadcrumb">
+    <a href="/ayuntamientos/index.html">Inicio</a>
+    <span class="separator">›</span>
+    <span id="breadcrumbMuni">Ayuntamiento</span>
+    <span class="separator">›</span>
+    <span class="current" id="breadcrumbTitle">Detalle de alerta</span>
+  </nav>
+
+  <main class="container" id="mainContent">
+    <div class="loading-detail">
+      <i class="fas fa-spinner fa-spin"></i>
+      Cargando detalle de la alerta…
+    </div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+  <script type="module">
+  import { initializeApp }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, collection, query,
+           where, getDocs }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const FB = {
+    apiKey:"AIzaSyBzidosSZRxKmjMIrg0zAjYRt_rbohcHLU",
+    authDomain:"saas-45027.firebaseapp.com",
+    projectId:"saas-45027",
+    storageBucket:"saas-45027.firebasestorage.app",
+    messagingSenderId:"117144809845",
+    appId:"1:117144809845:web:83153cf3aa6bc97851233c"
+  };
+  const app = initializeApp(FB);
+  const db  = getFirestore(app);
+
+  // ── Label maps ─────────────────────────────────────────────────────────
+  const catIcons  = {street_closure:"fa-road",parking_ban:"fa-square-parking",utility_cut:"fa-bolt",roadwork:"fa-helmet-safety",event:"fa-calendar-check",other:"fa-circle-info"};
+  const catLabels = {street_closure:"Corte de calles",parking_ban:"Prohibición aparcamiento",utility_cut:"Corte suministros",roadwork:"Obras",event:"Evento",other:"Otro"};
+  const stLabels  = {planned:"Próxima",ongoing:"En curso",completed:"Finalizada",cancelled:"Cancelada"};
+  const stColors  = {planned:{bg:"#fffbeb",text:"#b45309"},ongoing:{bg:"#ecfdf5",text:"#059669"},completed:{bg:"#f3f4f6",text:"#6b7280"},cancelled:{bg:"#fef2f2",text:"#dc2626"}};
+  const catColors = {street_closure:"#ef4444",parking_ban:"#be123c",utility_cut:"#2563eb",roadwork:"#b45309",event:"#059669",other:"#6b7280"};
+
+  // ── Helpers ────────────────────────────────────────────────────────────
+  function getId(){ return new URLSearchParams(window.location.search).get("id"); }
+  function formatDate(ts){ if(!ts) return "Sin fecha"; return ts.toDate().toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"}); }
+  function calcDuration(s,e){ if(!s||!e) return null; const d=Math.ceil((e-s)/86400000); return `${Math.max(d,1)} ${d===1?"día":"días"}`; }
+  function setStatus(msg,type=""){ const el=document.getElementById("mapStatus"); if(!el) return; el.innerHTML=msg; el.className="map-status "+type; }
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  function cityFromAddress(address){
+    const parts = address.split(",").map(s=>s.trim()).filter(Boolean);
+    if(parts.length>=3) return parts[parts.length-2];
+    if(parts.length===2) return parts[0];
+    return parts[0]||"";
+  }
+
+  // ── bbox from point + radius in metres ────────────────────────────────
+  function bboxFromPoint(lat,lon,radiusM=1500){
+    const dLat=radiusM/111320;
+    const dLon=radiusM/(111320*Math.cos(lat*Math.PI/180));
+    return [lat-dLat,lon-dLon,lat+dLat,lon+dLon]; // [S,W,N,E]
+  }
+
+  // ── Nominatim geocoder ─────────────────────────────────────────────────
+  async function nominatim(q){
+    const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&polygon_geojson=0&addressdetails=1`;
+    try{
+      const r=await fetch(url,{headers:{"Accept-Language":"es","User-Agent":"AlertasMunicipales/1.0"}});
+      const data=await r.json();
+      if(!data.length) return null;
+      return data.find(d=>d.class==="highway")||data[0];
+    }catch(e){ console.warn("nominatim:",e); return null; }
+  }
+
+  // ── Overpass: get OSM area id for a municipality ─────────────────────
+  // admin_level 6-8 covers Spanish municipalities
+  async function getAreaId(cityName){
+    const q=`[out:json][timeout:10];area["name"="${cityName.replace(/"/g,"")}"]["admin_level"~"^[6-8]$"];out ids;`;
+    const url=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
+    try{
+      const r=await fetch(url,{headers:{"User-Agent":"AlertasMunicipales/1.0"}});
+      const data=await r.json();
+      return data.elements?.length ? data.elements[0].id : null;
+    }catch(e){ console.warn("getAreaId:",e); return null; }
+  }
+
+  // ── Overpass: ALL segments of a street within a municipality ──────────
+  // Uses OSM area (exact admin boundary) — never leaks into other towns.
+  // Falls back to bbox if no area id available.
+  async function overpassStreetInArea(streetName,areaId,bbox){
+    const safe=streetName.replace(/"/g,"");
+    let q;
+    if(areaId){
+      q=`[out:json][timeout:20];area(${areaId})->.a;(`+
+        `way["name"="${safe}"](area.a);`+
+        `way["name"~"^${safe}$",i](area.a);`+
+        `);out geom;`;
+    } else {
+      const bb=bbox.join(",");
+      q=`[out:json][timeout:20];(`+
+        `way["name"="${safe}"](${bb});`+
+        `way["name"~"^${safe}$",i](${bb});`+
+        `);out geom;`;
+    }
+    const url=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
+    try{
+      const r=await fetch(url,{headers:{"User-Agent":"AlertasMunicipales/1.0"}});
+      const data=await r.json();
+      if(!data.elements?.length) return null;
+      const seen=new Set(), features=[];
+      for(const w of data.elements){
+        if(!w.geometry?.length||w.geometry.length<2||seen.has(w.id)) continue;
+        seen.add(w.id);
+        features.push({type:"Feature",properties:{name:w.tags?.name||streetName,osmId:w.id},
+          geometry:{type:"LineString",coordinates:w.geometry.map(n=>[n.lon,n.lat])}});
+      }
+      // Extra bbox safety: discard ways outside bbox
+      if(bbox){
+        const [s,w2,n,e]=bbox;
+        const filtered=features.filter(f=>{
+          const coords=f.geometry.coordinates;
+          const mid=coords[Math.floor(coords.length/2)];
+          return mid[1]>=s&&mid[1]<=n&&mid[0]>=w2&&mid[0]<=e;
+        });
+        console.info(`[overpass] "${streetName}": ${features.length} ways, ${filtered.length} in bbox`);
+        return filtered.length?{type:"FeatureCollection",features:filtered}:null;
+      }
+      return features.length?{type:"FeatureCollection",features}:null;
+    }catch(e){ console.warn("overpassStreetInArea:",e); return null; }
+  }
+
+  // ── Overpass: streets adjacent/intersecting a point ───────────────────
+  // Returns [{name, geojson}] of named streets within radiusM of (lat,lon),
+  // excluding the main street of the address.
+  async function overpassAdjacentStreets(lat,lon,mainStreetName,areaId,radiusM=120){
+    const safe=(mainStreetName||"").replace(/"/g,"");
+    let q;
+    if(areaId){
+      q=`[out:json][timeout:15];area(${areaId})->.a;`+
+        `way(around:${radiusM},${lat},${lon})["highway"]["name"](area.a);out geom;`;
+    } else {
+      q=`[out:json][timeout:15];`+
+        `way(around:${radiusM},${lat},${lon})["highway"]["name"];out geom;`;
+    }
+    const url=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
+    try{
+      const r=await fetch(url,{headers:{"User-Agent":"AlertasMunicipales/1.0"}});
+      const data=await r.json();
+      if(!data.elements?.length) return [];
+      const streetMap=new Map();
+      for(const w of data.elements){
+        const name=w.tags?.name;
+        if(!name||!w.geometry?.length) continue;
+        if(safe&&name.toLowerCase()===safe.toLowerCase()) continue;
+        if(!streetMap.has(name)) streetMap.set(name,[]);
+        streetMap.get(name).push({type:"Feature",properties:{name,osmId:w.id},
+          geometry:{type:"LineString",coordinates:w.geometry.map(n=>[n.lon,n.lat])}});
+      }
+      return Array.from(streetMap.entries()).map(([name,features])=>({
+        name, geojson:{type:"FeatureCollection",features}
+      }));
+    }catch(e){ console.warn("overpassAdjacentStreets:",e); return []; }
+  }
+
+  // ── Custom map pin icon ────────────────────────────────────────────────
+  function makePinIcon(category,isCurrent=false){
+    const color=isCurrent?"#f59e0b":(catColors[category]||"#6b7280");
+    const icon=catIcons[category]||"fa-circle-info";
+    const size=isCurrent?42:34;
+    const pulse=isCurrent?`<span style="position:absolute;inset:-5px;border-radius:50% 50% 50% 0;border:3px solid #f59e0b;opacity:.4;animation:pulseRing 1.8s ease-out infinite;"></span>`:"";
+    return L.divIcon({
+      className:"",
+      html:`<div style="position:relative;width:${size}px;height:${size}px;">${pulse}
+        <div class="map-pin${isCurrent?" current-pin":""}" style="background:${color};color:#fff;width:${size}px;height:${size}px;font-size:${isCurrent?".95rem":".78rem"};">
+          <i class="fas ${icon}"></i>
+        </div></div>`,
+      iconSize:[size,size],iconAnchor:[size/2,size],popupAnchor:[0,-(size+4)]
+    });
+  }
+
+  // ── Popup content ──────────────────────────────────────────────────────
+  function makePopup(incId,d,isCurrent=false){
+    const color=catColors[d.category]||"#6b7280";
+    const icon=catIcons[d.category]||"fa-circle-info";
+    const stColor=stColors[d.status]||stColors.planned;
+    const addr=d.location?.address||"";
+    const badge=isCurrent?`<div class="inc-popup-current-badge"><i class="fas fa-star"></i> Esta alerta</div>`:"";
+    return `<div class="inc-popup">
+      ${badge}
+      <div class="inc-popup-cat" style="color:${color}">
+        <i class="fas ${icon}"></i> ${catLabels[d.category]||d.category}
+        <span style="margin-left:auto;background:${stColor.bg};color:${stColor.text};padding:.1rem .45rem;border-radius:20px;font-size:.7rem;">${stLabels[d.status]||d.status}</span>
+      </div>
+      <div class="inc-popup-title">${d.title}</div>
+      ${addr?`<div class="inc-popup-addr"><i class="fas fa-map-marker-alt"></i>${addr}</div>`:""}
+      ${!isCurrent?`<a href="incident-detail.html?id=${incId}" class="inc-popup-link">Ver detalle <i class="fas fa-arrow-right"></i></a>`:""}
+    </div>`;
+  }
+
+  // ── Build map ──────────────────────────────────────────────────────────
+  let leafletMap=null;
+
+  async function buildMap(currentId,currentData,allIncidents){
+    leafletMap=L.map("leafletMap",{zoomControl:true,scrollWheelZoom:false});
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19
+    }).addTo(leafletMap);
+    const styleEl=document.createElement("style");
+    styleEl.textContent=`@keyframes pulseRing{0%{transform:scale(.9);opacity:.6}70%{transform:scale(1.3);opacity:0}100%{transform:scale(1.3);opacity:0}}`;
+    document.head.appendChild(styleEl);
+
+    const allLayers=[];
+    let geocodedCount=0;
+    const total=allIncidents.length;
+    const COLORS=["#ef4444","#f59e0b","#8b5cf6","#06b6d4","#10b981"];
+
+    setStatus(`<i class="fas fa-spinner fa-spin"></i> Cargando ${total} incidencia(s) en el mapa…`);
+
+    for(let i=0;i<allIncidents.length;i++){
+      const {id,data}=allIncidents[i];
+      const isCurrent=id===currentId;
+      const address=data.location?.address||"";
+      if(!address) continue;
+
+      setStatus(`<i class="fas fa-spinner fa-spin"></i> Geocodificando (${i+1}/${total}): ${data.title.substring(0,40)}…`);
+
+      // 1. Geocode main address
+      const mainNom=await nominatim(address);
+      if(!mainNom){ await sleep(1200); continue; }
+      const lat=parseFloat(mainNom.lat), lon=parseFloat(mainNom.lon);
+      const bbox=bboxFromPoint(lat,lon,1500);
+      const city=cityFromAddress(address);
+      geocodedCount++;
+
+      // 2. Resolve municipality OSM area (pins search to exact admin boundary)
+      let areaId=null;
+      if(city){
+        setStatus(`<i class="fas fa-spinner fa-spin"></i> Localizando municipio: <strong>${city}</strong>…`);
+        areaId=await getAreaId(city);
+        await sleep(800);
+      }
+
+      // 3. Draw listed affected streets
+      const streets=data.affected_streets||[];
+      for(let j=0;j<streets.length;j++){
+        const streetName=streets[j].trim();
+        if(!streetName) continue;
+        setStatus(`<i class="fas fa-spinner fa-spin"></i> Calle ${j+1}/${streets.length}: <strong>${streetName}</strong>…`);
+        if(j>0) await sleep(800);
+        const fc=await overpassStreetInArea(streetName,areaId,bbox);
+        if(fc){
+          const c=isCurrent?COLORS[j%COLORS.length]:"#94a3b8";
+          const segCount=fc.features.length;
+          if(isCurrent) setStatus(`<i class="fas fa-draw-polygon"></i> "${streetName}" — ${segCount} tramo(s)`);
+          const layer=L.geoJSON(fc,{
+            style:{color:c,weight:isCurrent?8:4,opacity:isCurrent?.95:.5,lineCap:"round",lineJoin:"round",dashArray:isCurrent?null:"5 5"},
+            onEachFeature:(_f,fl)=>fl.bindTooltip(`<strong>${streetName}</strong><br><small>${data.title}</small>`,{sticky:true,direction:"top"})
+          }).addTo(leafletMap);
+          allLayers.push(layer);
+        } else {
+          const c=isCurrent?COLORS[j%COLORS.length]:"#94a3b8";
+          const circle=L.circle([lat,lon],{radius:80,color:c,fillColor:c,fillOpacity:.25,weight:isCurrent?4:2,dashArray:isCurrent?null:"4 4"}).addTo(leafletMap);
+          circle.bindTooltip(`<strong>${streetName}</strong><br><small>Ubicación aproximada</small>`,{sticky:true});
+          allLayers.push(circle);
+        }
+      }
+
+      // 4. Adjacent streets — only for current incident
+      if(isCurrent){
+        const mainStreet=address.split(",")[0].trim();
+        setStatus(`<i class="fas fa-spinner fa-spin"></i> Buscando calles colindantes…`);
+        await sleep(800);
+        const adjacent=await overpassAdjacentStreets(lat,lon,mainStreet,areaId,120);
+        for(const adj of adjacent){
+          const layer=L.geoJSON(adj.geojson,{
+            style:{color:"#64748b",weight:4,opacity:.45,lineCap:"round",lineJoin:"round",dashArray:"3 6"},
+            onEachFeature:(_f,fl)=>fl.bindTooltip(
+              `<i class="fas fa-road" style="margin-right:.3rem"></i><strong>${adj.name}</strong><br><small style="color:#94a3b8">Calle colindante</small>`,
+              {sticky:true,direction:"top"}
+            )
+          }).addTo(leafletMap);
+          allLayers.push(layer);
+        }
+        if(adjacent.length) console.info(`[buildMap] Adjacent: ${adjacent.map(a=>a.name).join(", ")}`);
+      }
+
+      // 5. Pin marker
+      const pinIcon=makePinIcon(data.category,isCurrent);
+      const marker=L.marker([lat,lon],{icon:pinIcon,zIndexOffset:isCurrent?1000:0}).addTo(leafletMap);
+      marker.bindTooltip(
+        `<strong>${data.title}</strong>${isCurrent?" <span style='color:#b45309'>(esta alerta)</span>":""}`,
+        {permanent:isCurrent,direction:"top",offset:[0,-28],opacity:1}
+      );
+      marker.bindPopup(makePopup(id,data,isCurrent),{maxWidth:260});
+      if(isCurrent) marker.openPopup();
+      allLayers.push(marker);
+
+      if(i<allIncidents.length-1) await sleep(1200);
+    }
+
+    // Fit bounds
+    if(allLayers.length>0){
+      try{ leafletMap.fitBounds(L.featureGroup(allLayers).getBounds().pad(0.25),{maxZoom:17}); }
+      catch(e){
+        const fb=await nominatim(currentData.location?.address||"");
+        if(fb) leafletMap.setView([parseFloat(fb.lat),parseFloat(fb.lon)],15);
+        else   leafletMap.setView([40.416775,-3.70379],6);
+      }
+    } else {
+      leafletMap.setView([40.416775,-3.70379],6);
+    }
+
+    document.getElementById("incidentCounter").textContent=
+      `${geocodedCount} incidencia${geocodedCount!==1?"s":""} en el mapa`;
+
+    if(geocodedCount===0) setStatus("⚠️ No se pudieron localizar las direcciones.","warning");
+    else if(geocodedCount<total) setStatus(`✅ ${geocodedCount} de ${total} incidencias mostradas.`,"success");
+    else setStatus(`✅ ${geocodedCount} incidencia${geocodedCount!==1?"s":""} en el mapa.`,"success");
+  }
+
+  // ── Load detail ────────────────────────────────────────────────────────
+  async function loadDetail(){
+    const id=getId();
+    if(!id){ showError("No se ha especificado ninguna alerta."); return; }
+    try{
+      const snap=await getDoc(doc(db,"incidents",id));
+      if(!snap.exists()){ showError("Esta alerta no existe o ha sido eliminada."); return; }
+      const data=snap.data();
+
+      const allSnap=await getDocs(query(collection(db,"incidents"),
+        where("municipalityId","==",data.municipalityId),
+        where("visibility","==","public")));
+      const others=[];
+      allSnap.forEach(d=>{
+        if(d.id!==id&&["ongoing","planned"].includes(d.data().status))
+          others.push({id:d.id,data:d.data()});
+      });
+      const allIncidents=[{id,data},...others];
+
+      let duration=null;
+      if(data.start_date&&data.end_date)
+        duration=calcDuration(data.start_date.toDate(),data.end_date.toDate());
+      const mapsQuery=encodeURIComponent(data.location?.address||"");
+      const mapsUrl=`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+      const streets=data.affected_streets||[];
+      const stColor=stColors[data.status]||stColors.planned;
+      const otherCount=others.length;
+
+      const streetsHtml=streets.length>0?`
+        <div class="streets-section">
+          <div class="streets-title">Calles afectadas</div>
+          <div class="streets-tags">
+            ${streets.map(s=>`<span class="street-tag"><i class="fas fa-map-pin"></i> ${s}</span>`).join("")}
+          </div>
+        </div>`:"";
+
+      const pubDate=data.created_at?data.created_at.toDate():new Date();
+      const pubText=`Publicado el ${pubDate.toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
+      const mapSubtitle=otherCount>0
+        ?`Esta alerta + ${otherCount} más activa${otherCount!==1?"s":""} del municipio`
+        :"Solo esta alerta activa del municipio";
+      const legendHtml=
+        `<div class="legend-item"><span class="legend-dot current"></span> Esta alerta</div>`+
+        (otherCount>0?`<div class="legend-item"><span class="legend-dot other"></span> Otras activas</div>`:"")+
+        (streets.length>0?`<div class="legend-item"><span class="legend-line-swatch" style="background:#ef4444"></span> Calle afectada</div>`:"")+
+        `<div class="legend-item"><span class="legend-line-swatch" style="background:#64748b;opacity:.6"></span> Colindante</div>`;
+
+      document.getElementById("mainContent").innerHTML=`
+        <article class="detail-card">
+          <div class="badges-row">
+            <span class="category-badge ${data.category}">
+              <i class="fas ${catIcons[data.category]||"fa-circle-info"}"></i>
+              ${catLabels[data.category]||data.category}
+            </span>
+            <span class="status-badge" style="background:${stColor.bg};color:${stColor.text}">
+              <span class="dot"></span>${stLabels[data.status]||data.status}
+            </span>
+          </div>
+          <h1 class="detail-title">${data.title}</h1>
+          <p class="detail-muni">
+            <i class="fas fa-landmark"></i>
+            ${data.municipalityName||"Ayuntamiento"}${data.region?" — "+data.region:""}
+          </p>
+          <p class="detail-description">${data.description||"Sin descripción disponible."}</p>
+          <div class="info-grid">
+            <div class="info-block">
+              <div class="info-block-title">Período</div>
+              <div class="info-row"><i class="fas fa-calendar-plus"></i><span>Inicio: <strong>${formatDate(data.start_date)}</strong></span></div>
+              <div class="info-row"><i class="fas fa-calendar-minus"></i><span>Fin: <strong>${data.end_date?formatDate(data.end_date):"Sin fecha fin"}</strong></span></div>
+              ${duration?`<div class="info-row"><i class="fas fa-clock"></i><span>Duración: <strong>${duration}</strong></span></div>`:""}
+            </div>
+            <div class="info-block">
+              <div class="info-block-title">Ubicación</div>
+              <div class="info-row"><i class="fas fa-map-marker-alt"></i><span>${data.location?.address||"No especificada"}</span></div>
+              <div class="info-row">
+                <i class="fas fa-external-link-alt"></i>
+                <a href="${mapsUrl}" target="_blank" rel="noopener">Ver en Google Maps <i class="fas fa-arrow-right" style="font-size:.7rem"></i></a>
+              </div>
+            </div>
+          </div>
+          ${streetsHtml}
+          <p class="published-date">${pubText}</p>
+        </article>
+        <section class="map-card">
+          <div class="map-header">
+            <div class="map-header-left">
+              <i class="fas fa-map"></i>
+              Alertas activas en el mapa
+              <span style="font-size:.78rem;color:var(--text-muted);font-weight:400;">${mapSubtitle}</span>
+            </div>
+            <div class="map-legend">${legendHtml}</div>
+          </div>
+          <div class="map-status" id="mapStatus"><i class="fas fa-spinner fa-spin"></i> Iniciando mapa…</div>
+          <div id="leafletMap"></div>
+          <div class="map-footer">
+            <span class="incident-counter" id="incidentCounter"><i class="fas fa-map-marker-alt"></i> Cargando…</span>
+            <a href="${mapsUrl}" target="_blank" rel="noopener" class="open-maps-btn">
+              <i class="fas fa-external-link-alt"></i> Abrir en Google Maps
+            </a>
+          </div>
+        </section>`;
+
+      document.getElementById("breadcrumbMuni").innerHTML=`<a href="index.html">${data.municipalityName||"Ayuntamiento"}</a>`;
+      document.getElementById("breadcrumbTitle").textContent=data.title;
+      document.title=`${data.title} — Alertas Municipales`;
+
+      await buildMap(id,data,allIncidents);
+
+    }catch(err){
+      console.error("loadDetail:",err);
+      showError("Error al cargar la alerta. Inténtalo de nuevo.");
+    }
+  }
+
+  function showError(msg){
+    document.getElementById("mainContent").innerHTML=`
+      <div class="error-detail">
+        <i class="fas fa-exclamation-circle"></i>
+        <p>${msg}</p><br>
+        <a href="index.html">← Volver al listado</a>
+      </div>`;
+  }
+
+  loadDetail();
+  </script>
+</body>
+</html>
