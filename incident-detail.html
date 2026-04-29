@@ -157,7 +157,7 @@
 <body>
 
   <nav class="top-nav">
-    <a href="index.html" class="logo">
+    <a href="/ayuntamientos/index.html" class="logo">
       <i class="fas fa-bell"></i>
       <span>Alertas Municipales</span>
     </a>
@@ -165,7 +165,7 @@
   </nav>
 
   <nav class="breadcrumb" id="breadcrumb">
-    <a href="index.html">Inicio</a>
+    <a href="/ayuntamientos/index.html">Inicio</a>
     <span class="separator">›</span>
     <span id="breadcrumbMuni">Ayuntamiento</span>
     <span class="separator">›</span>
@@ -199,405 +199,274 @@
   const app = initializeApp(FB);
   const db  = getFirestore(app);
 
-  // ── Config maps ───────────────────────────────────────────────────────
-  const catIcons  = {
-    street_closure:"fa-road", parking_ban:"fa-square-parking",
-    utility_cut:"fa-bolt",    roadwork:"fa-helmet-safety",
-    event:"fa-calendar-check",other:"fa-circle-info"
-  };
-  const catLabels = {
-    street_closure:"Corte de calles", parking_ban:"Prohibición aparcamiento",
-    utility_cut:"Corte suministros",  roadwork:"Obras",
-    event:"Evento",                   other:"Otro"
-  };
-  const stLabels = {
-    planned:"Próxima", ongoing:"En curso",
-    completed:"Finalizada", cancelled:"Cancelada"
-  };
-  const stColors = {
-    planned:  {bg:"#fffbeb",text:"#b45309"},
-    ongoing:  {bg:"#ecfdf5",text:"#059669"},
-    completed:{bg:"#f3f4f6",text:"#6b7280"},
-    cancelled:{bg:"#fef2f2",text:"#dc2626"}
-  };
-  // Pin colors per category
-  const catColors = {
-    street_closure:"#ef4444", parking_ban:"#be123c",
-    utility_cut:"#2563eb",    roadwork:"#b45309",
-    event:"#059669",          other:"#6b7280"
-  };
+  // ── Label maps ─────────────────────────────────────────────────────────
+  const catIcons  = {street_closure:"fa-road",parking_ban:"fa-square-parking",utility_cut:"fa-bolt",roadwork:"fa-helmet-safety",event:"fa-calendar-check",other:"fa-circle-info"};
+  const catLabels = {street_closure:"Corte de calles",parking_ban:"Prohibición aparcamiento",utility_cut:"Corte suministros",roadwork:"Obras",event:"Evento",other:"Otro"};
+  const stLabels  = {planned:"Próxima",ongoing:"En curso",completed:"Finalizada",cancelled:"Cancelada"};
+  const stColors  = {planned:{bg:"#fffbeb",text:"#b45309"},ongoing:{bg:"#ecfdf5",text:"#059669"},completed:{bg:"#f3f4f6",text:"#6b7280"},cancelled:{bg:"#fef2f2",text:"#dc2626"}};
+  const catColors = {street_closure:"#ef4444",parking_ban:"#be123c",utility_cut:"#2563eb",roadwork:"#b45309",event:"#059669",other:"#6b7280"};
 
-  // ── Helpers ───────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────
   function getId(){ return new URLSearchParams(window.location.search).get("id"); }
-
-  function formatDate(ts){
-    if(!ts) return "Sin fecha";
-    return ts.toDate().toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"});
-  }
-  function calcDuration(s,e){
-    if(!s||!e) return null;
-    const d=Math.ceil((e-s)/86400000);
-    return `${Math.max(d,1)} ${d===1?"día":"días"}`;
-  }
-  function setStatus(msg,type=""){
-    const el=document.getElementById("mapStatus");
-    if(!el) return;
-    el.innerHTML=msg;
-    el.className="map-status "+type;
-  }
+  function formatDate(ts){ if(!ts) return "Sin fecha"; return ts.toDate().toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"}); }
+  function calcDuration(s,e){ if(!s||!e) return null; const d=Math.ceil((e-s)/86400000); return `${Math.max(d,1)} ${d===1?"día":"días"}`; }
+  function setStatus(msg,type=""){ const el=document.getElementById("mapStatus"); if(!el) return; el.innerHTML=msg; el.className="map-status "+type; }
   function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  function cityFromAddress(address){
+    const parts = address.split(",").map(s=>s.trim()).filter(Boolean);
+    if(parts.length>=3) return parts[parts.length-2];
+    if(parts.length===2) return parts[0];
+    return parts[0]||"";
+  }
 
-  // ── Nominatim: find OSM id + basic coords ────────────────────────────
-  // Returns { lat, lon, osm_type, osm_id, geojson, boundingbox } or null
-  async function nominatim(q, city=""){
-    const qs = encodeURIComponent(city ? q+", "+city : q);
-    const url = `https://nominatim.openstreetmap.org/search?q=${qs}`+
-                `&format=json&limit=3&polygon_geojson=1&addressdetails=1`;
+  // ── bbox from point + radius in metres ────────────────────────────────
+  function bboxFromPoint(lat,lon,radiusM=1500){
+    const dLat=radiusM/111320;
+    const dLon=radiusM/(111320*Math.cos(lat*Math.PI/180));
+    return [lat-dLat,lon-dLon,lat+dLat,lon+dLon]; // [S,W,N,E]
+  }
+
+  // ── Nominatim geocoder ─────────────────────────────────────────────────
+  async function nominatim(q){
+    const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&polygon_geojson=0&addressdetails=1`;
     try{
-      const r = await fetch(url, {
-        headers:{ "Accept-Language":"es", "User-Agent":"AlertasMunicipales/1.0" }
-      });
-      const data = await r.json();
+      const r=await fetch(url,{headers:{"Accept-Language":"es","User-Agent":"AlertasMunicipales/1.0"}});
+      const data=await r.json();
       if(!data.length) return null;
-      // Prefer results that are roads/streets (highway)
-      const road = data.find(d => d.class === "highway" || d.type === "road"
-                                || d.type === "residential" || d.type === "tertiary"
-                                || d.type === "secondary"   || d.type === "primary"
-                                || d.type === "service"     || d.type === "path"
-                                || d.type === "pedestrian"  || d.type === "footway");
-      return road || data[0];
+      return data.find(d=>d.class==="highway")||data[0];
     }catch(e){ console.warn("nominatim:",e); return null; }
   }
 
-  // ── Overpass: fetch full way geometry by OSM way id ──────────────────
-  // Returns a GeoJSON LineString/MultiLineString or null
-  async function overpassWay(osmId){
-    // Query: get all ways named after the street and their full node geometry
-    const query = `[out:json][timeout:10];way(${osmId});out geom;`;
-    const url   = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+  // ── Overpass: get OSM area id for a municipality ─────────────────────
+  // admin_level 6-8 covers Spanish municipalities
+  async function getAreaId(cityName){
+    const q=`[out:json][timeout:10];area["name"="${cityName.replace(/"/g,"")}"]["admin_level"~"^[6-8]$"];out ids;`;
+    const url=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
     try{
-      const r    = await fetch(url, { headers:{ "User-Agent":"AlertasMunicipales/1.0" } });
-      const data = await r.json();
-      if(!data.elements?.length) return null;
-
-      // Convert Overpass way geometry to GeoJSON LineString
-      const way = data.elements[0];
-      if(!way.geometry?.length) return null;
-
-      return {
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: way.geometry.map(n => [n.lon, n.lat])
-        }
-      };
-    }catch(e){ console.warn("overpassWay:",e); return null; }
+      const r=await fetch(url,{headers:{"User-Agent":"AlertasMunicipales/1.0"}});
+      const data=await r.json();
+      return data.elements?.length ? data.elements[0].id : null;
+    }catch(e){ console.warn("getAreaId:",e); return null; }
   }
 
-  // ── Overpass: search street by name within a bounding box ────────────
-  // Returns GeoJSON FeatureCollection with all matching ways
-  async function overpassStreetByName(streetName, bbox){
-    // bbox = [south, west, north, east]
-    const bb      = bbox.join(",");
-    const safeName = streetName.replace(/"/g, "");
-
-    // Try exact name match first, then regex fallback for partial names
-    // Using union: exact "name"=value OR regex "name"~ for robustness
-    const q = `[out:json][timeout:20];`+
-              `(`+
-              `  way["name"="${safeName}"](${bb});`+
-              `  way["name"~"^${safeName}$",i](${bb});`+
-              `);`+
-              `out geom;`;
-
-    const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
+  // ── Overpass: ALL segments of a street within a municipality ──────────
+  // Uses OSM area (exact admin boundary) — never leaks into other towns.
+  // Falls back to bbox if no area id available.
+  async function overpassStreetInArea(streetName,areaId,bbox){
+    const safe=streetName.replace(/"/g,"");
+    let q;
+    if(areaId){
+      q=`[out:json][timeout:20];area(${areaId})->.a;(`+
+        `way["name"="${safe}"](area.a);`+
+        `way["name"~"^${safe}$",i](area.a);`+
+        `);out geom;`;
+    } else {
+      const bb=bbox.join(",");
+      q=`[out:json][timeout:20];(`+
+        `way["name"="${safe}"](${bb});`+
+        `way["name"~"^${safe}$",i](${bb});`+
+        `);out geom;`;
+    }
+    const url=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
     try{
-      const r    = await fetch(url, { headers:{ "User-Agent":"AlertasMunicipales/1.0" } });
-      const data = await r.json();
+      const r=await fetch(url,{headers:{"User-Agent":"AlertasMunicipales/1.0"}});
+      const data=await r.json();
       if(!data.elements?.length) return null;
-
-      // Deduplicate by osm id (union query may return duplicates)
-      const seen    = new Set();
-      const features = [];
+      const seen=new Set(), features=[];
       for(const w of data.elements){
-        if(!w.geometry?.length || w.geometry.length < 2) continue;
-        if(seen.has(w.id)) continue;
+        if(!w.geometry?.length||w.geometry.length<2||seen.has(w.id)) continue;
         seen.add(w.id);
-        features.push({
-          type: "Feature",
-          properties: { name: w.tags?.name || streetName, osmId: w.id },
-          geometry: {
-            type: "LineString",
-            coordinates: w.geometry.map(n => [n.lon, n.lat])
-          }
+        features.push({type:"Feature",properties:{name:w.tags?.name||streetName,osmId:w.id},
+          geometry:{type:"LineString",coordinates:w.geometry.map(n=>[n.lon,n.lat])}});
+      }
+      // Extra bbox safety: discard ways outside bbox
+      if(bbox){
+        const [s,w2,n,e]=bbox;
+        const filtered=features.filter(f=>{
+          const coords=f.geometry.coordinates;
+          const mid=coords[Math.floor(coords.length/2)];
+          return mid[1]>=s&&mid[1]<=n&&mid[0]>=w2&&mid[0]<=e;
         });
+        console.info(`[overpass] "${streetName}": ${features.length} ways, ${filtered.length} in bbox`);
+        return filtered.length?{type:"FeatureCollection",features:filtered}:null;
       }
-
-      // Post-filter: discard any way whose midpoint falls outside the bbox
-      // This prevents streets from neighbouring towns with the same name
-      const [south, west, north, east] = bbox;
-      const inBbox = features.filter(f => {
-        const coords = f.geometry.coordinates;
-        const mid    = coords[Math.floor(coords.length / 2)];
-        return mid[1] >= south && mid[1] <= north &&
-               mid[0] >= west  && mid[0] <= east;
-      });
-
-      console.info(`[overpass] "${streetName}": ${features.length} found, ${inBbox.length} within bbox`);
-      return inBbox.length ? { type:"FeatureCollection", features: inBbox } : null;
-    }catch(e){ console.warn("overpassStreetByName:",e); return null; }
+      return features.length?{type:"FeatureCollection",features}:null;
+    }catch(e){ console.warn("overpassStreetInArea:",e); return null; }
   }
 
-  // ── Main street resolver ──────────────────────────────────────────────
-  // Strategy (in order of completeness):
-  //   1. Overpass by name in bbox → ALL segments of the street  ← PRIMARY
-  //   2. Nominatim osm_id → Overpass single way                 ← fallback when no bbox
-  //   3. Nominatim geojson (LineString/Polygon only)            ← last resort
-  //   4. Point + circle if nothing else worked                  ← visual fallback
-  async function resolveStreet(streetName, cityContext, cityBbox){
-    let geojson   = null;
-    let centerLat = null, centerLon = null;
-    let nom       = null;
-
-    // ── Step 1: Overpass by name — ALWAYS try this first ──────────────
-    // This is the only method that reliably returns ALL way segments
-    // (streets in OSM are split at every junction, traffic light, etc.)
-    if(cityBbox){
-      const fc = await overpassStreetByName(streetName, cityBbox);
-      if(fc){
-        geojson = fc;
-        // Derive center from first coordinate of first feature
-        const firstCoord = fc.features[0]?.geometry?.coordinates[0];
-        if(firstCoord){ centerLon = firstCoord[0]; centerLat = firstCoord[1]; }
+  // ── Overpass: streets adjacent/intersecting a point ───────────────────
+  // Returns [{name, geojson}] of named streets within radiusM of (lat,lon),
+  // excluding the main street of the address.
+  async function overpassAdjacentStreets(lat,lon,mainStreetName,areaId,radiusM=120){
+    const safe=(mainStreetName||"").replace(/"/g,"");
+    let q;
+    if(areaId){
+      q=`[out:json][timeout:15];area(${areaId})->.a;`+
+        `way(around:${radiusM},${lat},${lon})["highway"]["name"](area.a);out geom;`;
+    } else {
+      q=`[out:json][timeout:15];`+
+        `way(around:${radiusM},${lat},${lon})["highway"]["name"];out geom;`;
+    }
+    const url=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
+    try{
+      const r=await fetch(url,{headers:{"User-Agent":"AlertasMunicipales/1.0"}});
+      const data=await r.json();
+      if(!data.elements?.length) return [];
+      const streetMap=new Map();
+      for(const w of data.elements){
+        const name=w.tags?.name;
+        if(!name||!w.geometry?.length) continue;
+        if(safe&&name.toLowerCase()===safe.toLowerCase()) continue;
+        if(!streetMap.has(name)) streetMap.set(name,[]);
+        streetMap.get(name).push({type:"Feature",properties:{name,osmId:w.id},
+          geometry:{type:"LineString",coordinates:w.geometry.map(n=>[n.lon,n.lat])}});
       }
-    }
-
-    // ── Step 2: Nominatim lookup (needed for center coords + fallbacks) ─
-    if(!geojson || !centerLat){
-      nom = await nominatim(streetName, cityContext);
-      if(nom){
-        centerLat = parseFloat(nom.lat);
-        centerLon = parseFloat(nom.lon);
-      }
-    }
-
-    // ── Step 3: Overpass single way by osm_id (no bbox available) ──────
-    if(!geojson && nom?.osm_type === "way" && nom?.osm_id){
-      await sleep(600);
-      const wayGeo = await overpassWay(nom.osm_id);
-      if(wayGeo) geojson = wayGeo;
-    }
-
-    // ── Step 4: Nominatim geojson (LineString or Polygon, never Point) ──
-    if(!geojson && nom?.geojson && nom.geojson.type !== "Point"){
-      geojson = nom.geojson;
-    }
-
-    // centerLat/centerLon may still be null if everything failed
-    return { geojson, centerLat, centerLon, nom };
+      return Array.from(streetMap.entries()).map(([name,features])=>({
+        name, geojson:{type:"FeatureCollection",features}
+      }));
+    }catch(e){ console.warn("overpassAdjacentStreets:",e); return []; }
   }
 
-  // ── Build a tight bbox from a lat/lon point + radius in meters ──────
-  // This guarantees the search stays within the municipality, regardless
-  // of what Nominatim returns as its own bounding box.
-  // 1 degree latitude ≈ 111,320 m. Longitude degrees shrink with cos(lat).
-  function bboxFromPoint(lat, lon, radiusMeters = 1500){
-    const dLat = radiusMeters / 111320;
-    const dLon = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
-    return [
-      lat - dLat,   // south
-      lon - dLon,   // west
-      lat + dLat,   // north
-      lon + dLon    // east
-    ];
-  }
-
-  // ── Build category pin icon ───────────────────────────────────────────
-  function makePinIcon(category, isCurrent=false){
-    const color  = isCurrent ? "#f59e0b" : (catColors[category]||"#6b7280");
-    const icon   = catIcons[category] || "fa-circle-info";
-    const size   = isCurrent ? 42 : 34;
-    const pulse  = isCurrent ? `
-      <span style="position:absolute;inset:-5px;border-radius:50% 50% 50% 0;
-        border:3px solid #f59e0b;opacity:.4;animation:pulseRing 1.8s ease-out infinite;"></span>` : "";
-
+  // ── Custom map pin icon ────────────────────────────────────────────────
+  function makePinIcon(category,isCurrent=false){
+    const color=isCurrent?"#f59e0b":(catColors[category]||"#6b7280");
+    const icon=catIcons[category]||"fa-circle-info";
+    const size=isCurrent?42:34;
+    const pulse=isCurrent?`<span style="position:absolute;inset:-5px;border-radius:50% 50% 50% 0;border:3px solid #f59e0b;opacity:.4;animation:pulseRing 1.8s ease-out infinite;"></span>`:"";
     return L.divIcon({
       className:"",
-      html:`
-        <div style="position:relative;width:${size}px;height:${size}px;">
-          ${pulse}
-          <div class="map-pin${isCurrent?" current-pin":""}" style="
-            background:${color};color:#fff;
-            width:${size}px;height:${size}px;font-size:${isCurrent?".95rem":".78rem"};">
-            <i class="fas ${icon}"></i>
-          </div>
-        </div>`,
-      iconSize:[size,size],
-      iconAnchor:[size/2,size],
-      popupAnchor:[0,-(size+4)]
+      html:`<div style="position:relative;width:${size}px;height:${size}px;">${pulse}
+        <div class="map-pin${isCurrent?" current-pin":""}" style="background:${color};color:#fff;width:${size}px;height:${size}px;font-size:${isCurrent?".95rem":".78rem"};">
+          <i class="fas ${icon}"></i>
+        </div></div>`,
+      iconSize:[size,size],iconAnchor:[size/2,size],popupAnchor:[0,-(size+4)]
     });
   }
 
-  // ── Build popup content ───────────────────────────────────────────────
-  function makePopup(incId, d, isCurrent=false){
-    const color   = catColors[d.category]||"#6b7280";
-    const icon    = catIcons[d.category]||"fa-circle-info";
-    const stColor = stColors[d.status]||stColors.planned;
-    const addr    = d.location?.address||"";
-    const currentBadge = isCurrent
-      ? `<div class="inc-popup-current-badge"><i class="fas fa-star"></i> Esta alerta</div>` : "";
-    return `
-      <div class="inc-popup">
-        ${currentBadge}
-        <div class="inc-popup-cat" style="color:${color}">
-          <i class="fas ${icon}"></i> ${catLabels[d.category]||d.category}
-          <span style="margin-left:auto;background:${stColor.bg};color:${stColor.text};
-            padding:.1rem .45rem;border-radius:20px;font-size:.7rem;">
-            ${stLabels[d.status]||d.status}
-          </span>
-        </div>
-        <div class="inc-popup-title">${d.title}</div>
-        ${addr?`<div class="inc-popup-addr"><i class="fas fa-map-marker-alt"></i>${addr}</div>`:""}
-        ${!isCurrent?`<a href="incident-detail.html?id=${incId}" class="inc-popup-link">
-          Ver detalle <i class="fas fa-arrow-right"></i></a>`:""}
-      </div>`;
+  // ── Popup content ──────────────────────────────────────────────────────
+  function makePopup(incId,d,isCurrent=false){
+    const color=catColors[d.category]||"#6b7280";
+    const icon=catIcons[d.category]||"fa-circle-info";
+    const stColor=stColors[d.status]||stColors.planned;
+    const addr=d.location?.address||"";
+    const badge=isCurrent?`<div class="inc-popup-current-badge"><i class="fas fa-star"></i> Esta alerta</div>`:"";
+    return `<div class="inc-popup">
+      ${badge}
+      <div class="inc-popup-cat" style="color:${color}">
+        <i class="fas ${icon}"></i> ${catLabels[d.category]||d.category}
+        <span style="margin-left:auto;background:${stColor.bg};color:${stColor.text};padding:.1rem .45rem;border-radius:20px;font-size:.7rem;">${stLabels[d.status]||d.status}</span>
+      </div>
+      <div class="inc-popup-title">${d.title}</div>
+      ${addr?`<div class="inc-popup-addr"><i class="fas fa-map-marker-alt"></i>${addr}</div>`:""}
+      ${!isCurrent?`<a href="incident-detail.html?id=${incId}" class="inc-popup-link">Ver detalle <i class="fas fa-arrow-right"></i></a>`:""}
+    </div>`;
   }
 
-  // ── Main Leaflet map ──────────────────────────────────────────────────
-  let leafletMap = null;
+  // ── Build map ──────────────────────────────────────────────────────────
+  let leafletMap=null;
 
-  async function buildMap(currentId, currentData, allIncidents){
-    leafletMap = L.map("leafletMap",{zoomControl:true,scrollWheelZoom:false});
-
+  async function buildMap(currentId,currentData,allIncidents){
+    leafletMap=L.map("leafletMap",{zoomControl:true,scrollWheelZoom:false});
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
-      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom:19
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19
     }).addTo(leafletMap);
-
-    const styleEl = document.createElement("style");
+    const styleEl=document.createElement("style");
     styleEl.textContent=`@keyframes pulseRing{0%{transform:scale(.9);opacity:.6}70%{transform:scale(1.3);opacity:0}100%{transform:scale(1.3);opacity:0}}`;
     document.head.appendChild(styleEl);
 
-    const allLayers  = [];
-    let geocodedCount = 0;
-    const total       = allIncidents.length;
-    const COLORS      = ["#ef4444","#f59e0b","#8b5cf6","#06b6d4","#10b981"];
+    const allLayers=[];
+    let geocodedCount=0;
+    const total=allIncidents.length;
+    const COLORS=["#ef4444","#f59e0b","#8b5cf6","#06b6d4","#10b981"];
 
     setStatus(`<i class="fas fa-spinner fa-spin"></i> Cargando ${total} incidencia(s) en el mapa…`);
 
-    // ── Process each incident ──────────────────────────────────────────
-    for(let i=0; i<allIncidents.length; i++){
-      const {id, data} = allIncidents[i];
-      const isCurrent  = id === currentId;
-      const address    = data.location?.address || "";
+    for(let i=0;i<allIncidents.length;i++){
+      const {id,data}=allIncidents[i];
+      const isCurrent=id===currentId;
+      const address=data.location?.address||"";
       if(!address) continue;
 
       setStatus(`<i class="fas fa-spinner fa-spin"></i> Geocodificando (${i+1}/${total}): ${data.title.substring(0,40)}…`);
 
-      // ── Step 1: Geocode main address to get city bbox ────────────────
-      const mainNom = await nominatim(address);
+      // 1. Geocode main address
+      const mainNom=await nominatim(address);
       if(!mainNom){ await sleep(1200); continue; }
-
-      const lat      = parseFloat(mainNom.lat);
-      const lon      = parseFloat(mainNom.lon);
-      // Build bbox from the exact geocoded point, radius 1.5km — stays within the municipality
-      const cityBbox = bboxFromPoint(lat, lon, 1500);
-      // City context = last 1-2 parts of address (e.g. "Sevilla, España" → "Sevilla")
-      const cityCtx  = address.split(",").slice(-2).join(",").trim();
-
+      const lat=parseFloat(mainNom.lat), lon=parseFloat(mainNom.lon);
+      const bbox=bboxFromPoint(lat,lon,1500);
+      const city=cityFromAddress(address);
       geocodedCount++;
 
-      // ── Step 2: Draw each affected street ────────────────────────────
-      const streets     = data.affected_streets || [];
-      let   streetFound = false;
+      // 2. Resolve municipality OSM area (pins search to exact admin boundary)
+      let areaId=null;
+      if(city){
+        setStatus(`<i class="fas fa-spinner fa-spin"></i> Localizando municipio: <strong>${city}</strong>…`);
+        areaId=await getAreaId(city);
+        await sleep(800);
+      }
 
-      for(let j=0; j<streets.length; j++){
-        const streetName = streets[j].trim();
+      // 3. Draw listed affected streets
+      const streets=data.affected_streets||[];
+      for(let j=0;j<streets.length;j++){
+        const streetName=streets[j].trim();
         if(!streetName) continue;
-
-        setStatus(`<i class="fas fa-spinner fa-spin"></i> Buscando calle ${j+1}/${streets.length}: <strong>${streetName}</strong>…`);
-
-        // Small pause between streets to respect API rate limits
-        if(j > 0) await sleep(800);
-
-        const resolved = await resolveStreet(streetName, cityCtx, cityBbox);
-
-        if(resolved.geojson){
-          const c  = isCurrent ? COLORS[j % COLORS.length] : "#94a3b8";
-          const w  = isCurrent ? 8 : 4;
-          const op = isCurrent ? 0.95 : 0.55;
-
-          // Count segments for status message
-          const segCount = resolved.geojson.type === "FeatureCollection"
-            ? resolved.geojson.features.length : 1;
-          if(isCurrent)
-            setStatus(`<i class="fas fa-check-circle"></i> "${streetName}" — ${segCount} segmento(s) dibujado(s)`);
-
-          const layer = L.geoJSON(resolved.geojson, {
-            style: {
-              color:       c,
-              weight:      w,
-              opacity:     op,
-              fillColor:   c,
-              fillOpacity: isCurrent ? 0.15 : 0.05,
-              lineCap:     "round",
-              lineJoin:    "round",
-              dashArray:   isCurrent ? null : "5 5"
-            },
-            onEachFeature: (_feature, fLayer) => {
-              fLayer.bindTooltip(
-                `<strong>${streetName}</strong><br><small>${data.title}</small>`,
-                { sticky:true, direction:"top" }
-              );
-            }
+        setStatus(`<i class="fas fa-spinner fa-spin"></i> Calle ${j+1}/${streets.length}: <strong>${streetName}</strong>…`);
+        if(j>0) await sleep(800);
+        const fc=await overpassStreetInArea(streetName,areaId,bbox);
+        if(fc){
+          const c=isCurrent?COLORS[j%COLORS.length]:"#94a3b8";
+          const segCount=fc.features.length;
+          if(isCurrent) setStatus(`<i class="fas fa-draw-polygon"></i> "${streetName}" — ${segCount} tramo(s)`);
+          const layer=L.geoJSON(fc,{
+            style:{color:c,weight:isCurrent?8:4,opacity:isCurrent?.95:.5,lineCap:"round",lineJoin:"round",dashArray:isCurrent?null:"5 5"},
+            onEachFeature:(_f,fl)=>fl.bindTooltip(`<strong>${streetName}</strong><br><small>${data.title}</small>`,{sticky:true,direction:"top"})
           }).addTo(leafletMap);
-
           allLayers.push(layer);
-          streetFound = true;
-
-        } else if(resolved.centerLat){
-          // Fallback: Nominatim found a point but no geometry → small circle
-          const c = isCurrent ? COLORS[j % COLORS.length] : "#94a3b8";
-          const circle = L.circle([resolved.centerLat, resolved.centerLon], {
-            radius: 80, color: c, fillColor: c,
-            fillOpacity: isCurrent ? 0.3 : 0.15, weight: isCurrent ? 4 : 2,
-            dashArray: isCurrent ? null : "4 4"
-          }).addTo(leafletMap);
-          circle.bindTooltip(
-            `<strong>${streetName}</strong><br><small>Ubicación aproximada</small>`,
-            { sticky:true }
-          );
+        } else {
+          const c=isCurrent?COLORS[j%COLORS.length]:"#94a3b8";
+          const circle=L.circle([lat,lon],{radius:80,color:c,fillColor:c,fillOpacity:.25,weight:isCurrent?4:2,dashArray:isCurrent?null:"4 4"}).addTo(leafletMap);
+          circle.bindTooltip(`<strong>${streetName}</strong><br><small>Ubicación aproximada</small>`,{sticky:true});
           allLayers.push(circle);
-          streetFound = true;
         }
-      } // end streets loop
+      }
 
-      // ── Step 3: Pin marker ───────────────────────────────────────────
-      const pinIcon = makePinIcon(data.category, isCurrent);
-      const marker  = L.marker([lat, lon], {
-        icon: pinIcon,
-        zIndexOffset: isCurrent ? 1000 : 0
-      }).addTo(leafletMap);
+      // 4. Adjacent streets — only for current incident
+      if(isCurrent){
+        const mainStreet=address.split(",")[0].trim();
+        setStatus(`<i class="fas fa-spinner fa-spin"></i> Buscando calles colindantes…`);
+        await sleep(800);
+        const adjacent=await overpassAdjacentStreets(lat,lon,mainStreet,areaId,120);
+        for(const adj of adjacent){
+          const layer=L.geoJSON(adj.geojson,{
+            style:{color:"#64748b",weight:4,opacity:.45,lineCap:"round",lineJoin:"round",dashArray:"3 6"},
+            onEachFeature:(_f,fl)=>fl.bindTooltip(
+              `<i class="fas fa-road" style="margin-right:.3rem"></i><strong>${adj.name}</strong><br><small style="color:#94a3b8">Calle colindante</small>`,
+              {sticky:true,direction:"top"}
+            )
+          }).addTo(leafletMap);
+          allLayers.push(layer);
+        }
+        if(adjacent.length) console.info(`[buildMap] Adjacent: ${adjacent.map(a=>a.name).join(", ")}`);
+      }
 
+      // 5. Pin marker
+      const pinIcon=makePinIcon(data.category,isCurrent);
+      const marker=L.marker([lat,lon],{icon:pinIcon,zIndexOffset:isCurrent?1000:0}).addTo(leafletMap);
       marker.bindTooltip(
-        `<strong>${data.title}</strong>${isCurrent ? " <span style='color:#b45309'>(esta alerta)</span>" : ""}`,
-        { permanent: isCurrent, direction:"top", offset:[0,-28], opacity:1 }
+        `<strong>${data.title}</strong>${isCurrent?" <span style='color:#b45309'>(esta alerta)</span>":""}`,
+        {permanent:isCurrent,direction:"top",offset:[0,-28],opacity:1}
       );
-      marker.bindPopup(makePopup(id, data, isCurrent), { maxWidth:260 });
+      marker.bindPopup(makePopup(id,data,isCurrent),{maxWidth:260});
       if(isCurrent) marker.openPopup();
-
       allLayers.push(marker);
 
-      // Rate limit between incidents
-      if(i < allIncidents.length - 1) await sleep(1200);
+      if(i<allIncidents.length-1) await sleep(1200);
     }
 
-    // ── Fit map to all layers ──────────────────────────────────────────
-    if(allLayers.length > 0){
-      try{
-        const group=L.featureGroup(allLayers);
-        leafletMap.fitBounds(group.getBounds().pad(0.25),{maxZoom:17});
-      }catch(e){
+    // Fit bounds
+    if(allLayers.length>0){
+      try{ leafletMap.fitBounds(L.featureGroup(allLayers).getBounds().pad(0.25),{maxZoom:17}); }
+      catch(e){
         const fb=await nominatim(currentData.location?.address||"");
         if(fb) leafletMap.setView([parseFloat(fb.lat),parseFloat(fb.lon)],15);
         else   leafletMap.setView([40.416775,-3.70379],6);
@@ -606,54 +475,43 @@
       leafletMap.setView([40.416775,-3.70379],6);
     }
 
-    // ── Update counter and status ──────────────────────────────────────
-    document.getElementById("incidentCounter").textContent =
+    document.getElementById("incidentCounter").textContent=
       `${geocodedCount} incidencia${geocodedCount!==1?"s":""} en el mapa`;
 
-    if(geocodedCount===0)
-      setStatus("⚠️ No se pudieron localizar las direcciones.","warning");
-    else if(geocodedCount < total)
-      setStatus(`✅ ${geocodedCount} de ${total} incidencia(s) mostradas. Algunas direcciones no se encontraron.`,"success");
-    else
-      setStatus(`✅ ${geocodedCount} incidencia${geocodedCount!==1?"s":""} cargada${geocodedCount!==1?"s":""} en el mapa.`,"success");
+    if(geocodedCount===0) setStatus("⚠️ No se pudieron localizar las direcciones.","warning");
+    else if(geocodedCount<total) setStatus(`✅ ${geocodedCount} de ${total} incidencias mostradas.`,"success");
+    else setStatus(`✅ ${geocodedCount} incidencia${geocodedCount!==1?"s":""} en el mapa.`,"success");
   }
 
-  // ── Load everything ───────────────────────────────────────────────────
+  // ── Load detail ────────────────────────────────────────────────────────
   async function loadDetail(){
     const id=getId();
     if(!id){ showError("No se ha especificado ninguna alerta."); return; }
-
     try{
-      // Load current incident
-      const snap = await getDoc(doc(db,"incidents",id));
+      const snap=await getDoc(doc(db,"incidents",id));
       if(!snap.exists()){ showError("Esta alerta no existe o ha sido eliminada."); return; }
-      const data = snap.data();
+      const data=snap.data();
 
-      // Load all active+planned incidents for same municipality
-      const allSnap = await getDocs(query(
-        collection(db,"incidents"),
+      const allSnap=await getDocs(query(collection(db,"incidents"),
         where("municipalityId","==",data.municipalityId),
-        where("visibility","==","public")
-      ));
-
-      // Build incidents list: current first, then others
-      const others = [];
+        where("visibility","==","public")));
+      const others=[];
       allSnap.forEach(d=>{
-        if(d.id!==id && ["ongoing","planned"].includes(d.data().status))
-          others.push({id:d.id, data:d.data()});
+        if(d.id!==id&&["ongoing","planned"].includes(d.data().status))
+          others.push({id:d.id,data:d.data()});
       });
-      // Current incident goes first so it's always processed
-      const allIncidents = [{id, data}, ...others];
+      const allIncidents=[{id,data},...others];
 
-      // ── Render card HTML ─────────────────────────────────────────────
-      const duration    = data.start_date&&data.end_date
-        ? calcDuration(data.start_date.toDate(),data.end_date.toDate()) : null;
-      const mapsQuery   = encodeURIComponent(data.location?.address||"");
-      const mapsUrl     = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-      const streets     = data.affected_streets||[];
-      const stColor     = stColors[data.status]||stColors.planned;
+      let duration=null;
+      if(data.start_date&&data.end_date)
+        duration=calcDuration(data.start_date.toDate(),data.end_date.toDate());
+      const mapsQuery=encodeURIComponent(data.location?.address||"");
+      const mapsUrl=`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+      const streets=data.affected_streets||[];
+      const stColor=stColors[data.status]||stColors.planned;
+      const otherCount=others.length;
 
-      const streetsHtml = streets.length>0?`
+      const streetsHtml=streets.length>0?`
         <div class="streets-section">
           <div class="streets-title">Calles afectadas</div>
           <div class="streets-tags">
@@ -661,16 +519,18 @@
           </div>
         </div>`:"";
 
-      const pubDate = data.created_at?data.created_at.toDate():new Date();
-      const pubText = `Publicado el ${pubDate.toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
-
-      const otherCount = others.length;
-      const mapSubtitle = otherCount>0
-        ? `Esta alerta + ${otherCount} más activa${otherCount!==1?"s":""} del municipio`
-        : "Solo esta alerta (no hay otras activas)";
+      const pubDate=data.created_at?data.created_at.toDate():new Date();
+      const pubText=`Publicado el ${pubDate.toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
+      const mapSubtitle=otherCount>0
+        ?`Esta alerta + ${otherCount} más activa${otherCount!==1?"s":""} del municipio`
+        :"Solo esta alerta activa del municipio";
+      const legendHtml=
+        `<div class="legend-item"><span class="legend-dot current"></span> Esta alerta</div>`+
+        (otherCount>0?`<div class="legend-item"><span class="legend-dot other"></span> Otras activas</div>`:"")+
+        (streets.length>0?`<div class="legend-item"><span class="legend-line-swatch" style="background:#ef4444"></span> Calle afectada</div>`:"")+
+        `<div class="legend-item"><span class="legend-line-swatch" style="background:#64748b;opacity:.6"></span> Colindante</div>`;
 
       document.getElementById("mainContent").innerHTML=`
-
         <article class="detail-card">
           <div class="badges-row">
             <span class="category-badge ${data.category}">
@@ -706,7 +566,6 @@
           ${streetsHtml}
           <p class="published-date">${pubText}</p>
         </article>
-
         <section class="map-card">
           <div class="map-header">
             <div class="map-header-left">
@@ -714,40 +573,23 @@
               Alertas activas en el mapa
               <span style="font-size:.78rem;color:var(--text-muted);font-weight:400;">${mapSubtitle}</span>
             </div>
-            <div class="map-legend">
-              <div class="legend-item">
-                <span class="legend-dot current"></span> Esta alerta
-              </div>
-              <div class="legend-item">
-                <span class="legend-dot other"></span> Otras activas
-              </div>
-              <div class="legend-item">
-                <span class="legend-line-swatch" style="background:#ef4444"></span> Calle afectada
-              </div>
-            </div>
+            <div class="map-legend">${legendHtml}</div>
           </div>
-          <div class="map-status" id="mapStatus">
-            <i class="fas fa-spinner fa-spin"></i> Iniciando mapa…
-          </div>
+          <div class="map-status" id="mapStatus"><i class="fas fa-spinner fa-spin"></i> Iniciando mapa…</div>
           <div id="leafletMap"></div>
           <div class="map-footer">
-            <span class="incident-counter" id="incidentCounter">
-              <i class="fas fa-map-marker-alt"></i> Cargando…
-            </span>
+            <span class="incident-counter" id="incidentCounter"><i class="fas fa-map-marker-alt"></i> Cargando…</span>
             <a href="${mapsUrl}" target="_blank" rel="noopener" class="open-maps-btn">
               <i class="fas fa-external-link-alt"></i> Abrir en Google Maps
             </a>
           </div>
-        </section>
-      `;
+        </section>`;
 
-      // Breadcrumb + title
       document.getElementById("breadcrumbMuni").innerHTML=`<a href="index.html">${data.municipalityName||"Ayuntamiento"}</a>`;
       document.getElementById("breadcrumbTitle").textContent=data.title;
       document.title=`${data.title} — Alertas Municipales`;
 
-      // Build map
-      await buildMap(id, data, allIncidents);
+      await buildMap(id,data,allIncidents);
 
     }catch(err){
       console.error("loadDetail:",err);
